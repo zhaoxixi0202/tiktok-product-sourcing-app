@@ -790,6 +790,91 @@ button.secondary {
   justify-content: flex-end;
 }
 
+.shop-analytics-module {
+  margin-top: 16px;
+}
+
+.analytics-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.analytics-kpis article {
+  display: grid;
+  gap: 6px;
+  min-height: 104px;
+  padding: 14px;
+  border: 1px solid #e4e7ec;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.analytics-kpis span,
+.analytics-product-row span,
+.analytics-product-row small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.analytics-kpis strong {
+  color: var(--text);
+  font-size: 28px;
+  line-height: 1;
+}
+
+.analytics-actions {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid #e4e7ec;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.analytics-actions h4 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.analytics-product-list {
+  display: grid;
+  gap: 10px;
+}
+
+.analytics-product-row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid #edf0f5;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.analytics-product-row img {
+  width: 52px;
+  height: 52px;
+  border: 1px solid #e4e7ec;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #f8fafc;
+}
+
+.analytics-product-row div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.analytics-product-row strong {
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .supplier-actions {
   display: flex;
   align-items: center;

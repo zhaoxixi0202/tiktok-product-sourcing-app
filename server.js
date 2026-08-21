@@ -45,8 +45,10 @@ const defaultState = {
     shops: [],
     products: [],
     promotions: [],
+    analytics: null,
     lastSyncAt: null,
     lastPromotionSyncAt: null,
+    lastAnalyticsSyncAt: null,
     lastError: null,
   },
 };
@@ -261,6 +263,7 @@ function publicTikTokConnection(tiktok) {
   const shops = Array.isArray(tiktok?.shops) ? tiktok.shops : [];
   const products = Array.isArray(tiktok?.products) ? tiktok.products : [];
   const promotions = Array.isArray(tiktok?.promotions) ? tiktok.promotions : [];
+  const analytics = tiktok?.analytics && typeof tiktok.analytics === "object" ? tiktok.analytics : null;
   return {
     configured: tiktokConfigured(),
     authorized: Boolean(token?.accessToken),
@@ -268,12 +271,14 @@ function publicTikTokConnection(tiktok) {
     refreshTokenExpiresAt: token?.refreshTokenExpiresAt || null,
     openId: token?.openId || "",
     scopes: token?.grantedScopes || [],
-    requiredScopes: ["seller.authorization.info", "seller.global_product.info", "seller.shop.info", "seller.promotion.info"],
+    requiredScopes: ["seller.authorization.info", "seller.global_product.info", "seller.shop.info", "seller.promotion.info", "data.shop_analytics.public.read"],
     shops,
     products,
     promotions,
+    analytics,
     lastSyncAt: tiktok?.lastSyncAt || null,
     lastPromotionSyncAt: tiktok?.lastPromotionSyncAt || null,
+    lastAnalyticsSyncAt: tiktok?.lastAnalyticsSyncAt || null,
     lastError: tiktok?.lastError || null,
   };
 }
@@ -902,6 +907,100 @@ async function syncTikTokPromotions(limit = 50) {
   state.tiktok.promotions = promotions;
   state.tiktok.lastPromotionSyncAt = new Date().toISOString();
   state.tiktok.lastError = activityData.error || couponData.error || null;
+  writeState(state);
+  return publicTikTokConnection(state.tiktok);
+}
+
+function isoDateOffset(days) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function metricNumber(item, keys) {
+  for (const key of keys) {
+    const value = key.split(".").reduce((current, part) => current?.[part], item);
+    if (value === undefined || value === null || value === "") continue;
+    const numeric = Number(String(value).replace(/[^\d.-]/g, ""));
+    if (Number.isFinite(numeric)) return numeric;
+  }
+  return 0;
+}
+
+function normalizeTikTokAnalyticsProduct(item, index) {
+  const product = item.product || item.product_info || item.productInfo || {};
+  const title = item.title || item.product_name || item.productName || product.title || product.product_name || "";
+  const productId = item.product_id || item.productId || item.id || product.product_id || product.id || "";
+  const gmv = metricNumber(item, ["gmv.amount", "gmv", "revenue.amount", "revenue", "sales_amount"]);
+  const views = metricNumber(item, ["views", "view_count", "product_view_count", "impressions", "exposure_count"]);
+  const clicks = metricNumber(item, ["clicks", "click_count", "product_click_count", "product_clicks"]);
+  const carts = metricNumber(item, ["add_to_cart_count", "addToCartCount", "cart_count", "product_add_to_cart_count"]);
+  const orders = metricNumber(item, ["orders", "order_count", "paid_order_count", "main_order_count"]);
+  const units = metricNumber(item, ["items_sold", "item_sold_count", "units_sold", "sku_order_count"]);
+  const ctr = metricNumber(item, ["ctr", "click_through_rate", "clickThroughRate"]) || (views ? (clicks / views) * 100 : 0);
+  const cartRate = metricNumber(item, ["add_to_cart_rate", "addToCartRate", "cart_rate"]) || (clicks ? (carts / clicks) * 100 : 0);
+  const conversionRate = metricNumber(item, ["conversion_rate", "conversionRate", "click_to_order_rate", "order_rate"]) || (clicks ? (orders / clicks) * 100 : 0);
+  return {
+    rank: index + 1,
+    productId: String(productId),
+    title: String(title || `Product ${index + 1}`),
+    imageUrl: firstTikTokImage(item) || firstTikTokImage(product),
+    gmv,
+    views,
+    clicks,
+    addToCarts: carts,
+    orders,
+    units,
+    ctr,
+    addToCartRate: cartRate,
+    conversionRate,
+    raw: item,
+  };
+}
+
+async function syncTikTokAnalytics(options = {}) {
+  const state = readState();
+  const shops = state.tiktok?.shops?.length ? state.tiktok.shops : await fetchTikTokAuthorizedShops();
+  const shop = shops[0];
+  if (!shop?.cipher) throw new Error("No authorized TikTok Shop found. Please connect a shop first.");
+  const endDate = options.endDate || isoDateOffset(0);
+  const startDate = options.startDate || isoDateOffset(-7);
+  const pageSize = Math.max(1, Math.min(100, Number(options.limit) || 50));
+  const data = await callTikTokApi("/analytics/202605/shop_products/performance", {
+    method: "GET",
+    query: {
+      shop_cipher: shop.cipher,
+      start_date_ge: startDate,
+      end_date_lt: endDate,
+      currency: options.currency || "LOCAL",
+      page_size: pageSize,
+    },
+  });
+  const rows = data.products || data.shop_products || data.product_performances || data.items || data.data || [];
+  const products = (Array.isArray(rows) ? rows : []).map(normalizeTikTokAnalyticsProduct);
+  const totals = products.reduce((summary, product) => {
+    summary.gmv += product.gmv;
+    summary.views += product.views;
+    summary.clicks += product.clicks;
+    summary.addToCarts += product.addToCarts;
+    summary.orders += product.orders;
+    summary.units += product.units;
+    return summary;
+  }, { gmv: 0, views: 0, clicks: 0, addToCarts: 0, orders: 0, units: 0 });
+  totals.ctr = totals.views ? (totals.clicks / totals.views) * 100 : 0;
+  totals.addToCartRate = totals.clicks ? (totals.addToCarts / totals.clicks) * 100 : 0;
+  totals.conversionRate = totals.clicks ? (totals.orders / totals.clicks) * 100 : 0;
+  state.tiktok.shops = shops;
+  state.tiktok.analytics = {
+    source: "tiktok-shop-analytics",
+    startDate,
+    endDate,
+    currency: options.currency || "LOCAL",
+    totals,
+    products,
+  };
+  state.tiktok.lastAnalyticsSyncAt = new Date().toISOString();
+  state.tiktok.lastError = null;
   writeState(state);
   return publicTikTokConnection(state.tiktok);
 }
@@ -1656,6 +1755,18 @@ async function handleTikTokSyncPromotions(req, res) {
   }
 }
 
+async function handleTikTokSyncAnalytics(req, res) {
+  try {
+    const body = JSON.parse((await readBody(req)) || "{}");
+    sendJson(res, 200, await syncTikTokAnalytics(body));
+  } catch (error) {
+    const state = readState();
+    state.tiktok.lastError = error.message;
+    writeState(state);
+    sendJson(res, 400, { error: error.message, connection: publicTikTokConnection(state.tiktok) });
+  }
+}
+
 function handleTikTokReset(res) {
   const state = readState();
   state.tiktok = {
@@ -1723,6 +1834,10 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === "POST" && url.pathname === "/api/admin/tiktok/promotions") {
     handleTikTokSyncPromotions(req, res);
+    return;
+  }
+  if (req.method === "POST" && url.pathname === "/api/admin/tiktok/analytics") {
+    handleTikTokSyncAnalytics(req, res);
     return;
   }
   if (req.method === "POST" && url.pathname === "/api/admin/tiktok/reset") {

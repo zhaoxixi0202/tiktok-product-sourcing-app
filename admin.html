@@ -246,6 +246,7 @@ TIKTOK_SOURCING_API_KEY</pre>
               <button class="secondary" id="refreshTikTokShops" type="button">刷新店铺</button>
               <button class="secondary" id="syncTikTokProducts" type="button">同步商品</button>
               <button class="secondary" id="syncTikTokPromotions" type="button">同步促销</button>
+              <button class="secondary" id="syncShopAnalytics" type="button">同步分析</button>
               <button class="secondary danger-light" id="resetTikTokAuth" type="button">重置授权</button>
             </div>
           </div>
@@ -264,6 +265,17 @@ TIKTOK_SOURCING_API_KEY</pre>
             <div class="mini-table" id="tiktokShopList"></div>
             <div class="mini-table" id="tiktokProductList"></div>
           </div>
+          <section class="sourcing-advice shop-analytics-module">
+            <div class="advice-head">
+              <div>
+                <h3 id="shopAnalyticsTitle">Shop Analytics</h3>
+                <p id="shopAnalyticsSummary">同步 TikTok Shop Analytics 后，查看点击、加购、转化和商品动作建议。</p>
+              </div>
+              <span id="shopAnalyticsSignal">待同步</span>
+            </div>
+            <div class="analytics-kpis" id="shopAnalyticsKpis"></div>
+            <div class="analytics-actions" id="shopAnalyticsActions"></div>
+          </section>
           <section class="sourcing-advice tiktok-promo-advice">
             <div class="advice-head">
               <div>
