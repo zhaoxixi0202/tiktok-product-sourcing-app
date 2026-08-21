@@ -616,8 +616,24 @@ function formatMoney(currency, value) {
   return `${currency || "SGD"} ${Number.isInteger(number) ? number : number.toFixed(2)}`;
 }
 
+function numericPrice(product) {
+  return Number(String(product?.price ?? "").replace(/[^\d.]/g, "")) || 0;
+}
+
 function lineBreaks(value) {
   return escapeHtml(value).replace(/\n/g, "<br>");
+}
+
+function productAnchor(product) {
+  const title = escapeHtml(shortTitle(product?.title || "Untitled product", 58));
+  if (!product?.productUrl) return title;
+  return `<a href="${escapeAttr(product.productUrl)}" target="_blank" rel="noreferrer">${title}</a>`;
+}
+
+function productDetailLine(product) {
+  const price = formatMoney(product?.currency, numericPrice(product));
+  const stock = product?.inventory == null ? "-" : product.inventory;
+  return `${productAnchor(product)}<span>${escapeHtml([price || "价格待补", `${t("stock")} ${stock}`].join(" · "))}</span>`;
 }
 
 function renderTikTokPromotionAdvice(products, promotions = []) {
@@ -629,55 +645,89 @@ function renderTikTokPromotionAdvice(products, promotions = []) {
     return;
   }
   const activeProducts = products
-    .map((product) => ({ ...product, priceNumber: Number(product.price || 0), type: promoType(product), analysis: scoreTikTokShopProduct(product) }))
-    .filter((product) => product.analysis.recommendation !== "avoid" && product.priceNumber > 0 && Number(product.inventory ?? 1) > 0)
+    .map((product) => ({ ...product, priceNumber: numericPrice(product), type: promoType(product), analysis: scoreTikTokShopProduct(product) }))
+    .filter((product) => product.analysis.recommendation !== "avoid" && Number(product.inventory ?? 1) > 0)
     .sort((a, b) => b.analysis.score - a.analysis.score || b.inventory - a.inventory);
+  const pricedProducts = activeProducts.filter((product) => product.priceNumber > 0);
   const hero = activeProducts[0] || products[0];
-  const addOns = activeProducts.filter((product) => product.productId !== hero.productId && product.priceNumber <= Math.max(15, Number(hero.price || 0))).slice(0, 3);
-  const avgPrice = activeProducts.length ? activeProducts.reduce((sum, product) => sum + product.priceNumber, 0) / activeProducts.length : 0;
-  const threshold = Math.ceil((avgPrice * 2.2) / 5) * 5;
+  const heroPriceNumber = numericPrice(hero);
+  const addOns = activeProducts
+    .filter((product) => product.productId !== hero.productId)
+    .sort((a, b) => {
+      const aFits = a.priceNumber > 0 && a.priceNumber <= Math.max(15, heroPriceNumber || 15) ? 1 : 0;
+      const bFits = b.priceNumber > 0 && b.priceNumber <= Math.max(15, heroPriceNumber || 15) ? 1 : 0;
+      return bFits - aFits || b.analysis.score - a.analysis.score;
+    })
+    .slice(0, 3);
+  const avgPrice = pricedProducts.length ? pricedProducts.reduce((sum, product) => sum + product.priceNumber, 0) / pricedProducts.length : 0;
+  const threshold = avgPrice ? Math.ceil((avgPrice * 2.2) / 5) * 5 : 25;
   const types = [...new Set(activeProducts.map((product) => typeLabel(product.type)))].slice(0, 4);
   const activePromotions = promotions.filter((promo) => /ACTIVE|ONGOING|APPROVED|START|ENABLE|LIVE/i.test(promo.status));
   const promotionNote = promotions.length ? t("promoExisting", promotions.length) : t("promoNoExisting");
-  const heroPrice = formatMoney(hero.currency, hero.price);
-  const thresholdText = formatMoney(hero.currency, threshold || 25);
+  const heroPrice = formatMoney(hero.currency, heroPriceNumber);
+  const thresholdText = formatMoney(hero.currency, threshold);
   const discountText = formatMoney(hero.currency, (hero.currency || "SGD") === "SGD" ? 2 : Math.max(1, Math.round((threshold || 25) * 0.08)));
   el.promoAdviceSignal.textContent = activeProducts.length >= 2 ? t("promoReady") : t("promoWaiting");
   el.promoAdviceSummary.textContent = currentLanguage === "zh"
     ? `基于 ${products.length} 个店铺商品，筛出 ${activeProducts.length} 个可组合款；${promotionNote}。建议先做“主推款 + 加购款 + 小额门槛券”。`
     : `Based on ${products.length} shop products, ${activeProducts.length} are bundle candidates; ${promotionNote}. Start with a hero product, add-ons, and a small threshold coupon.`;
-  const addOnNames = addOns.map((product) => `${shortTitle(product.title)}（${formatMoney(product.currency, product.price) || "-"}）`).join(" / ");
-  const heroReasons = hero.analysis?.reasons?.slice(0, 2).join(" / ") || "";
+  const addOnPlainNames = addOns.map((product) => `${shortTitle(product.title)}（${formatMoney(product.currency, numericPrice(product)) || "价格待补"}）`).join(" / ");
+  const heroReasons = hero.analysis?.reasons?.slice(0, 4) || [];
+  const bundlePrice = [hero, ...addOns].reduce((sum, product) => sum + numericPrice(product), 0);
+  const bundlePriceText = bundlePrice ? formatMoney(hero.currency, bundlePrice) : "价格待补";
+  const bundleDiscountText = bundlePrice ? formatMoney(hero.currency, Math.max(1, Math.round(bundlePrice * 0.08))) : discountText;
   const cards = [
     {
       title: t("promoPlan"),
-      body: currentLanguage === "zh"
-        ? `目标：提高客单价，而不是单纯降价。\n打法：${shortTitle(hero.title)} 做主推，搭配 ${addOns.length ? addOnNames : "1-2 个低价高库存款"}。\n周期：先跑 3-5 天，看点击率、加购率和转化。`
-        : `Goal: lift average order value, not just discount.\nMove: use ${shortTitle(hero.title)} as the hero and pair it with ${addOns.length ? addOnNames : "1-2 low-price in-stock add-ons"}.\nRun it for 3-5 days, then check clicks, carts, and conversion.`,
+      html: currentLanguage === "zh"
+        ? `
+          <p><strong>打法：</strong>做「主推款引流 + 低价加购提升客单」，不是简单全店打折。</p>
+          <p><strong>组合形式：</strong>优先用 Seller Voucher / 满减券，不建议一开始强行建固定套餐；配饰款式变化多，先让用户自由搭配。</p>
+          <p><strong>搭配：</strong>${productAnchor(hero)} + ${addOns.length ? addOns.map(productAnchor).join(" + ") : "1-2 个低价高库存小配饰"}。</p>
+          <p><strong>预算建议：</strong>若能设置套餐，套餐价可比单买合计 ${escapeHtml(bundlePriceText)} 低约 ${escapeHtml(bundleDiscountText)}；若不能设置套餐，就用满 ${escapeHtml(thresholdText || "SGD 25")} 减 ${escapeHtml(discountText || "SGD 2")}。</p>
+          <p><strong>周期：</strong>先跑 3-5 天，只看 CTR、加购率、转化率，不要第一天就大幅改价。</p>
+        `
+        : `
+          <p><strong>Move:</strong>Use the hero product for traffic and low-price add-ons to lift AOV.</p>
+          <p><strong>Format:</strong>Start with a Seller Voucher / threshold discount, not a locked bundle. Accessories need flexible matching.</p>
+          <p><strong>Pairing:</strong>${productAnchor(hero)} + ${addOns.length ? addOns.map(productAnchor).join(" + ") : "1-2 low-price in-stock accessories"}.</p>
+          <p><strong>Pricing:</strong>If bundles are supported, make the bundle about ${escapeHtml(bundleDiscountText)} lower than ${escapeHtml(bundlePriceText)}. Otherwise use ${escapeHtml(discountText || "SGD 2")} off over ${escapeHtml(thresholdText || "SGD 25")}.</p>
+          <p><strong>Run:</strong>Test for 3-5 days and judge by CTR, add-to-cart rate, and conversion.</p>
+        `,
     },
     {
       title: t("promoHero"),
-      body: currentLanguage === "zh"
-        ? `${shortTitle(hero.title)}｜${heroPrice || "价格待补"}｜库存 ${hero.inventory ?? "-"}。\n选择原因：${heroReasons || "当前评分最高，适合先做素材测试"}。`
-        : `${shortTitle(hero.title)} | ${heroPrice || "price missing"} | stock ${hero.inventory ?? "-"}.\nWhy: ${heroReasons || "Highest current score, good first creative test candidate"}.`,
+      html: currentLanguage === "zh"
+        ? `
+          <div class="promo-product-line">${productDetailLine(hero)}</div>
+          <p><strong>更详细原因：</strong>${escapeHtml(heroReasons.join(" / ") || "当前综合评分最高，适合作为第一轮素材测试款")}。</p>
+          <p><strong>运营判断：</strong>${heroPrice ? "价格带可用于配饰测款，适合配小额券。" : "价格没有被 API 返回，先补价格和毛利再决定折扣力度。"} ${hero.productUrl ? "已附商品链接，方便直接打开核对详情。" : "API 未返回商品链接，可先在店铺后台按标题搜索核对。"}</p>
+          <p><strong>主推素材：</strong>用它做封面第一件，拍「上身/佩戴效果 + 近景材质 + 30 秒搭配」。</p>
+        `
+        : `
+          <div class="promo-product-line">${productDetailLine(hero)}</div>
+          <p><strong>Why:</strong>${escapeHtml(heroReasons.join(" / ") || "Highest current score, good first creative test candidate")}.</p>
+          <p><strong>Operator note:</strong>${heroPrice ? "Price works for accessory testing and small vouchers." : "Price is missing; check margin before setting discount."} ${hero.productUrl ? "Product link is attached for review." : "No product link returned; search by title in Seller Center."}</p>
+          <p><strong>Creative:</strong>Use it as the first cover product: try-on, close-up material shot, and 30-second styling.</p>
+        `,
     },
     {
       title: t("promoMechanics"),
       body: currentLanguage === "zh"
-        ? `${activePromotions.length ? "已有活动，先检查是否和新券叠加，避免利润被吃掉。" : "目前没有读到活动，建议先在 Seller Center 建一个 Seller Voucher/Coupon。"}\n建议门槛：满 ${thresholdText || "SGD 25"} 减 ${discountText || "SGD 2"}，或第二件 9 折。\n注意：TikTok Open API 主要用于读取促销，创建优惠券通常仍在 Seller Center 操作。`
-        : `${activePromotions.length ? "Existing campaigns found. Check stacking before adding another discount." : "No active campaign loaded. Create a Seller Voucher/Coupon in Seller Center first."}\nSuggested threshold: ${discountText || "SGD 2"} off over ${thresholdText || "SGD 25"}, or 10% off the second item.\nNote: TikTok Open API is mainly useful here for reading promotions; coupon creation usually stays in Seller Center.`,
+        ? `${activePromotions.length ? "已有活动，先检查是否和新券叠加，避免利润被吃掉。" : "目前没有读到活动，建议先在 Seller Center 建一个 Seller Voucher/Coupon。"}\n优先级：满减券 > 第二件折扣 > 固定套餐。\n建议门槛：满 ${thresholdText || "SGD 25"} 减 ${discountText || "SGD 2"}；如果毛利不足，改成满额免邮或小礼品。\n套餐建议：主推款 + 1 个同风格低价款；不要把 3 个风格完全不同的款硬绑成套餐。`
+        : `${activePromotions.length ? "Existing campaigns found. Check stacking before adding another discount." : "No active campaign loaded. Create a Seller Voucher/Coupon in Seller Center first."}\nPriority: threshold voucher > second-item discount > fixed bundle.\nSuggested threshold: ${discountText || "SGD 2"} off over ${thresholdText || "SGD 25"}; if margin is tight, use free shipping or a small gift.\nBundle rule: hero + 1 same-style low-price item. Avoid bundling three unrelated styles.`,
     },
     {
       title: t("promoOperations"),
       body: currentLanguage === "zh"
-        ? `1. 先确认主推款库存和主图完整。\n2. 用加购款做套装图或直播口播：“买主推加 ${addOns[0] ? shortTitle(addOns[0].title) : "小配饰"} 更划算”。\n3. 短视频拍：上班前 30 秒搭配 / 一套衣服换 3 个配饰 / 热天轻便不夸张。\n4. 结束后保留转化好的款，低点击款换封面或标题。`
-        : `1. Confirm hero stock and main image.\n2. Use add-ons in bundle images or live scripts: buy the hero with ${addOns[0] ? shortTitle(addOns[0].title) : "a small accessory"} for better value.\n3. Video hooks: 30-second office styling / one outfit, three accessories / light humid-weather styling.\n4. Keep converters; refresh covers or titles for low-click products.`,
+        ? `1. 打开主推链接核对：价格、库存、主图、是否可售。\n2. 选 ${addOns[0] ? shortTitle(addOns[0].title) : "一个低价同风格款"} 做加购，商品图里做“同风格搭配”。\n3. Seller Center 设置：满 ${thresholdText || "SGD 25"} 减 ${discountText || "SGD 2"}，活动名写清楚“Accessory Set Deal”。\n4. 短视频拍：主推单品 3 秒钩子 + 组合佩戴 + 价格利益点。\n5. 3 天后复盘：CTR 低换封面；加购高转化低加券；转化高库存低先补货。`
+        : `1. Open the hero link and check price, stock, main image, and sale status.\n2. Pick ${addOns[0] ? shortTitle(addOns[0].title) : "one same-style low-price item"} as the add-on and show the pairing in images.\n3. Seller Center setup: ${discountText || "SGD 2"} off over ${thresholdText || "SGD 25"}; name it “Accessory Set Deal”.\n4. Video: 3-second hero hook + paired try-on + price benefit.\n5. Review after 3 days: low CTR means new cover; high cart low CVR means voucher; high CVR low stock means replenish.`,
     },
   ];
   el.promoAdviceGrid.innerHTML = cards.map((card) => `
     <article class="advice-card">
       <h4>${escapeHtml(card.title)}</h4>
-      <p>${lineBreaks(card.body)}</p>
+      ${card.html || `<p>${lineBreaks(card.body)}</p>`}
     </article>
   `).join("");
 }
@@ -995,9 +1045,9 @@ function renderSourcingAdvice() {
   `).join("");
 }
 
-function shortTitle(title) {
+function shortTitle(title, limit = 42) {
   const value = String(title || "Untitled product");
-  return value.length > 42 ? `${value.slice(0, 42)}...` : value;
+  return value.length > limit ? `${value.slice(0, limit)}...` : value;
 }
 
 function signalCopy(label) {

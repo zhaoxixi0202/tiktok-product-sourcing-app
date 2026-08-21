@@ -917,6 +917,31 @@ button.secondary {
   line-height: 1.55;
 }
 
+.advice-card p + p {
+  margin-top: 8px;
+}
+
+.advice-card a {
+  color: #1d4ed8;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.advice-card a:hover {
+  text-decoration: underline;
+}
+
+.promo-product-line {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.promo-product-line span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .risk-overview {
   height: 100%;
   min-height: 238px;
