@@ -42,6 +42,26 @@
           <span id="saveStatus">未保存</span>
         </div>
         <form class="admin-form" id="configForm">
+          <fieldset class="form-section compact-section">
+            <legend>TikTok Shop Connection</legend>
+            <div class="connection-card wide-field">
+              <div>
+                <span class="eyebrow">Official Open API</span>
+                <strong id="tiktokConnectionStatus">读取中</strong>
+                <p id="tiktokConnectionDetail">用于授权你的 TikTok Shop 店铺，并同步店铺商品列表。</p>
+              </div>
+              <div class="connection-actions">
+                <button class="secondary" id="connectTikTokShop" type="button">Connect TikTok Shop</button>
+                <button class="secondary" id="refreshTikTokShops" type="button">Refresh Shops</button>
+                <button class="secondary" id="syncTikTokProducts" type="button">Sync Products</button>
+              </div>
+            </div>
+            <div class="wide-field tiktok-connection-grid">
+              <div class="mini-table" id="tiktokShopList"></div>
+              <div class="mini-table" id="tiktokProductList"></div>
+            </div>
+            <p class="section-note">App Key、App Secret、Redirect URL 只在 Render Environment Variables 里配置。页面只显示授权状态，不显示密钥。</p>
+          </fieldset>
           <fieldset class="form-section">
             <legend>Ranking Data Source</legend>
             <label>

@@ -1,6 +1,7 @@
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
+const crypto = require("node:crypto");
 
 const root = __dirname;
 const port = Number(process.env.PORT || 8787);
@@ -37,6 +38,14 @@ const defaultState = {
     lastError: null,
   },
   lastResult: null,
+  tiktok: {
+    authState: null,
+    token: null,
+    shops: [],
+    products: [],
+    lastSyncAt: null,
+    lastError: null,
+  },
 };
 
 function loadEnv(file) {
@@ -226,6 +235,42 @@ function feishuConfigured(config) {
   return Boolean(config.feishuSheetUrl && config.feishuSheetRange && process.env.LARK_APP_ID && process.env.LARK_APP_SECRET);
 }
 
+function tiktokConfigured() {
+  return Boolean(process.env.TIKTOK_APP_KEY && process.env.TIKTOK_APP_SECRET);
+}
+
+function tiktokRedirectUri(req) {
+  if (process.env.TIKTOK_REDIRECT_URI) return process.env.TIKTOK_REDIRECT_URI;
+  const proto = req.headers["x-forwarded-proto"] || "http";
+  return `${proto}://${req.headers.host}/api/tiktok/callback`;
+}
+
+function tiktokAuthBase() {
+  return process.env.TIKTOK_AUTH_BASE_URL || "https://services.tiktokshop.com/open/authorize";
+}
+
+function tiktokApiBase() {
+  return (process.env.TIKTOK_API_BASE_URL || "https://open-api.tiktokglobalshop.com").replace(/\/$/, "");
+}
+
+function publicTikTokConnection(tiktok) {
+  const token = tiktok?.token || null;
+  const shops = Array.isArray(tiktok?.shops) ? tiktok.shops : [];
+  const products = Array.isArray(tiktok?.products) ? tiktok.products : [];
+  return {
+    configured: tiktokConfigured(),
+    authorized: Boolean(token?.accessToken),
+    accessTokenExpiresAt: token?.accessTokenExpiresAt || null,
+    refreshTokenExpiresAt: token?.refreshTokenExpiresAt || null,
+    openId: token?.openId || "",
+    scopes: token?.grantedScopes || [],
+    shops,
+    products,
+    lastSyncAt: tiktok?.lastSyncAt || null,
+    lastError: tiktok?.lastError || null,
+  };
+}
+
 function providerConfigured(config) {
   if (config.provider === "demo") return true;
   if (config.provider === "apify") return hasApifyToken();
@@ -260,7 +305,7 @@ function isAdminProtected() {
 }
 
 function isAdminRequest(url) {
-  return url.pathname === "/admin" || url.pathname === "/admin.html" || url.pathname === "/admin.js" || url.pathname.startsWith("/api/admin") || url.pathname === "/api/products/search";
+  return url.pathname === "/admin" || url.pathname === "/admin.html" || url.pathname === "/admin.js" || url.pathname.startsWith("/api/admin") || url.pathname === "/api/products/search" || url.pathname === "/api/products/search-async";
 }
 
 function isAuthorized(req) {
@@ -332,6 +377,7 @@ function readState() {
       ...parsed,
       config: { ...defaultState.config, ...(parsed.config || {}) },
       stats: { ...defaultState.stats, ...(parsed.stats || {}) },
+      tiktok: { ...defaultState.tiktok, ...(parsed.tiktok || {}) },
     };
     if (!Array.isArray(state.config.keywords)) state.config.keywords = defaultState.config.keywords;
     if (state.stats.todayKey !== todayKey()) {
@@ -518,12 +564,180 @@ function accountSnapshot(state) {
     supplierDetailProvider: state.config.supplierDetailProvider,
     supplierDetailConfigured: supplierDetailConfigured(state.config),
     feishuConfigured: feishuConfigured(state.config),
+    tiktokConfigured: tiktokConfigured(),
+    tiktokAuthorized: Boolean(state.tiktok?.token?.accessToken),
+    tiktokShopCount: Array.isArray(state.tiktok?.shops) ? state.tiktok.shops.length : 0,
     tokenLocation,
     adminProtected: isAdminProtected(),
     searchActorId: state.config.searchActorId,
     detailActorId: state.config.detailActorId,
     permissions: providerConfigured(state.config) ? "数据源已配置" : "缺少当前数据源 Token",
   };
+}
+
+function adminStatePayload(state) {
+  return {
+    config: state.config,
+    stats: state.stats,
+    account: accountSnapshot(state),
+    lastResult: state.lastResult,
+    tiktok: publicTikTokConnection(state.tiktok),
+  };
+}
+
+function buildTikTokAuthUrl(req) {
+  if (!tiktokConfigured()) throw new Error("Missing TIKTOK_APP_KEY or TIKTOK_APP_SECRET in backend environment");
+  const state = readState();
+  const authState = crypto.randomBytes(16).toString("hex");
+  state.tiktok.authState = authState;
+  state.tiktok.lastError = null;
+  writeState(state);
+  const url = new URL(process.env.TIKTOK_AUTH_URL || tiktokAuthBase());
+  if (!url.searchParams.get("service_id") && process.env.TIKTOK_SERVICE_ID) {
+    url.searchParams.set("service_id", process.env.TIKTOK_SERVICE_ID);
+  }
+  if (!url.searchParams.get("service_id")) {
+    throw new Error("Missing TIKTOK_SERVICE_ID or TIKTOK_AUTH_URL in backend environment");
+  }
+  url.searchParams.set("state", authState);
+  url.searchParams.set("redirect_uri", tiktokRedirectUri(req));
+  return url.toString();
+}
+
+function normalizeTikTokToken(data) {
+  return {
+    accessToken: data.access_token || data.accessToken || "",
+    refreshToken: data.refresh_token || data.refreshToken || "",
+    accessTokenExpiresAt: data.access_token_expire_in || data.accessTokenExpiresAt || null,
+    refreshTokenExpiresAt: data.refresh_token_expire_in || data.refreshTokenExpiresAt || null,
+    openId: data.open_id || data.openId || "",
+    userType: data.user_type ?? data.userType ?? "",
+    grantedScopes: data.granted_scopes || data.grantedScopes || [],
+  };
+}
+
+function tikTokSign(pathname, params, body = "") {
+  const sorted = Object.keys(params)
+    .filter((key) => key !== "sign" && key !== "access_token")
+    .sort()
+    .map((key) => `${key}${params[key]}`)
+    .join("");
+  const base = `${process.env.TIKTOK_APP_SECRET}${pathname}${sorted}${body}${process.env.TIKTOK_APP_SECRET}`;
+  return crypto.createHmac("sha256", process.env.TIKTOK_APP_SECRET).update(base).digest("hex");
+}
+
+async function exchangeTikTokCode(code) {
+  if (!tiktokConfigured()) throw new Error("Missing TIKTOK_APP_KEY or TIKTOK_APP_SECRET in backend environment");
+  const endpoint = new URL("https://auth.tiktok-shops.com/api/v2/token/get");
+  endpoint.searchParams.set("app_key", process.env.TIKTOK_APP_KEY);
+  endpoint.searchParams.set("app_secret", process.env.TIKTOK_APP_SECRET);
+  endpoint.searchParams.set("auth_code", code);
+  endpoint.searchParams.set("grant_type", "authorized_code");
+  const response = await fetch(endpoint);
+  const payload = await response.json();
+  if (!response.ok || payload.code !== 0) {
+    throw new Error(payload.message || `TikTok token exchange failed: HTTP ${response.status}`);
+  }
+  return payload.data || {};
+}
+
+async function refreshTikTokTokenIfNeeded(state) {
+  const token = state.tiktok?.token;
+  if (!token?.refreshToken) throw new Error("TikTok Shop is not authorized yet");
+  const expiresAt = Number(token.accessTokenExpiresAt || 0);
+  const now = Math.floor(Date.now() / 1000);
+  if (token.accessToken && expiresAt > now + 600) return token.accessToken;
+
+  const endpoint = new URL("https://auth.tiktok-shops.com/api/v2/token/refresh");
+  endpoint.searchParams.set("app_key", process.env.TIKTOK_APP_KEY);
+  endpoint.searchParams.set("app_secret", process.env.TIKTOK_APP_SECRET);
+  endpoint.searchParams.set("refresh_token", token.refreshToken);
+  endpoint.searchParams.set("grant_type", "refresh_token");
+  const response = await fetch(endpoint);
+  const payload = await response.json();
+  if (!response.ok || payload.code !== 0) {
+    throw new Error(payload.message || `TikTok token refresh failed: HTTP ${response.status}`);
+  }
+  state.tiktok.token = normalizeTikTokToken({ ...token, ...(payload.data || {}) });
+  writeState(state);
+  return state.tiktok.token.accessToken;
+}
+
+async function callTikTokApi(pathname, options = {}) {
+  if (!tiktokConfigured()) throw new Error("Missing TIKTOK_APP_KEY or TIKTOK_APP_SECRET in backend environment");
+  const state = readState();
+  const accessToken = await refreshTikTokTokenIfNeeded(state);
+  const method = options.method || "GET";
+  const bodyText = options.body ? JSON.stringify(options.body) : "";
+  const query = {
+    app_key: process.env.TIKTOK_APP_KEY,
+    timestamp: Math.floor(Date.now() / 1000),
+    ...(options.query || {}),
+  };
+  query.sign = tikTokSign(pathname, query, bodyText);
+  const endpoint = new URL(`${tiktokApiBase()}${pathname}`);
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== null && value !== "") endpoint.searchParams.set(key, String(value));
+  }
+  const response = await fetch(endpoint, {
+    method,
+    headers: {
+      "content-type": "application/json",
+      "x-tts-access-token": accessToken,
+    },
+    body: bodyText || undefined,
+  });
+  const payload = await response.json();
+  if (!response.ok || payload.code !== 0) {
+    throw new Error(payload.message || `TikTok API failed: HTTP ${response.status}`);
+  }
+  return payload.data || {};
+}
+
+async function fetchTikTokAuthorizedShops() {
+  const data = await callTikTokApi("/authorization/202309/shops");
+  return data.shops || [];
+}
+
+function normalizeTikTokShopProduct(product, index, shop) {
+  const firstSku = Array.isArray(product.skus) ? product.skus[0] || {} : {};
+  const price = firstSku.price || product.price || {};
+  const image = product.main_images?.[0]?.urls?.[0] || product.main_images?.[0]?.url || product.images?.[0]?.url || "";
+  return {
+    rank: index + 1,
+    productId: String(product.id || product.product_id || ""),
+    title: String(product.title || product.product_name || "Untitled product"),
+    status: String(product.status || product.audit_status || ""),
+    productUrl: product.product_url || "",
+    imageUrl: image,
+    sellerSku: firstSku.seller_sku || "",
+    price: price.sale_price || price.tax_exclusive_price || "",
+    currency: price.currency || "",
+    inventory: Array.isArray(firstSku.inventory) ? firstSku.inventory.reduce((sum, item) => sum + Number(item.available_stock || item.quantity || 0), 0) : null,
+    shopName: shop?.name || "",
+    shopRegion: shop?.region || "",
+    shopCipher: shop?.cipher || "",
+  };
+}
+
+async function syncTikTokProducts(limit = 50) {
+  const state = readState();
+  const shops = state.tiktok?.shops?.length ? state.tiktok.shops : await fetchTikTokAuthorizedShops();
+  const shop = shops[0];
+  if (!shop?.cipher) throw new Error("No authorized TikTok Shop found. Please connect a shop first.");
+  const pageSize = Math.max(1, Math.min(100, Number(limit) || 50));
+  const data = await callTikTokApi("/product/202502/products/search", {
+    method: "POST",
+    query: { shop_cipher: shop.cipher, page_size: pageSize },
+    body: { status: "ALL" },
+  });
+  const products = (data.products || []).map((product, index) => normalizeTikTokShopProduct(product, index, shop));
+  state.tiktok.shops = shops;
+  state.tiktok.products = products;
+  state.tiktok.lastSyncAt = new Date().toISOString();
+  state.tiktok.lastError = null;
+  writeState(state);
+  return publicTikTokConnection(state.tiktok);
 }
 
 function firstImage(raw) {
@@ -1006,7 +1220,7 @@ async function handleLastResult(res) {
     state.stats.lastQueryAt = new Date().toISOString();
     state.stats.lastError = null;
     writeState(state);
-    sendJson(res, 200, { config: state.config, stats: state.stats, account: accountSnapshot(state), lastResult: state.lastResult });
+    sendJson(res, 200, adminStatePayload(state));
   } catch (error) {
     const state = readState();
     state.stats.lastError = error.message;
@@ -1145,7 +1359,7 @@ async function handleSaveConfig(req, res) {
     const body = JSON.parse((await readBody(req)) || "{}");
     state.config = { ...state.config, ...sanitizeConfig(body) };
     writeState(state);
-    sendJson(res, 200, { config: state.config, stats: state.stats, account: accountSnapshot(state), lastResult: state.lastResult });
+    sendJson(res, 200, adminStatePayload(state));
   } catch (error) {
     sendJson(res, 400, { error: error.message });
   }
@@ -1200,15 +1414,83 @@ async function handleFeishuSupplierLinks(req, res) {
   }
 }
 
+async function handleTikTokCallback(req, res, url) {
+  const state = readState();
+  const code = url.searchParams.get("code");
+  const incomingState = url.searchParams.get("state");
+  const denied = url.searchParams.get("error");
+  try {
+    if (denied || !code || code === "null") throw new Error(denied || "TikTok authorization was cancelled");
+    if (state.tiktok.authState && incomingState !== state.tiktok.authState) throw new Error("TikTok authorization state mismatch");
+    const tokenData = await exchangeTikTokCode(code);
+    state.tiktok.token = normalizeTikTokToken(tokenData);
+    state.tiktok.authState = null;
+    writeState(state);
+    state.tiktok.shops = await fetchTikTokAuthorizedShops();
+    state.tiktok.lastError = null;
+    writeState(state);
+    res.writeHead(302, { Location: "/admin?tiktok=connected" });
+    res.end();
+  } catch (error) {
+    state.tiktok.lastError = error.message;
+    writeState(state);
+    res.writeHead(302, { Location: `/admin?tiktok_error=${encodeURIComponent(error.message)}` });
+    res.end();
+  }
+}
+
+async function handleTikTokAuthUrl(req, res) {
+  try {
+    sendJson(res, 200, { url: buildTikTokAuthUrl(req) });
+  } catch (error) {
+    sendJson(res, 400, { error: error.message });
+  }
+}
+
+function handleTikTokConnection(res) {
+  const state = readState();
+  sendJson(res, 200, publicTikTokConnection(state.tiktok));
+}
+
+async function handleTikTokRefreshShops(res) {
+  const state = readState();
+  try {
+    state.tiktok.shops = await fetchTikTokAuthorizedShops();
+    state.tiktok.lastError = null;
+    writeState(state);
+    sendJson(res, 200, publicTikTokConnection(state.tiktok));
+  } catch (error) {
+    state.tiktok.lastError = error.message;
+    writeState(state);
+    sendJson(res, 400, { error: error.message, connection: publicTikTokConnection(state.tiktok) });
+  }
+}
+
+async function handleTikTokSyncProducts(req, res) {
+  try {
+    const body = JSON.parse((await readBody(req)) || "{}");
+    sendJson(res, 200, await syncTikTokProducts(body.limit || 50));
+  } catch (error) {
+    const state = readState();
+    state.tiktok.lastError = error.message;
+    writeState(state);
+    sendJson(res, 400, { error: error.message, connection: publicTikTokConnection(state.tiktok) });
+  }
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
+  if (req.method === "GET" && url.pathname === "/api/tiktok/callback") {
+    handleTikTokCallback(req, res, url);
+    return;
+  }
   if (isAdminRequest(url) && !isAuthorized(req)) {
     sendUnauthorized(res);
     return;
   }
   if (req.method === "GET" && (url.pathname === "/api/config" || url.pathname === "/api/admin/state")) {
     const state = readState();
-    sendJson(res, 200, { config: state.config, stats: state.stats, account: accountSnapshot(state), lastResult: state.lastResult });
+    sendJson(res, 200, adminStatePayload(state));
     return;
   }
   if (req.method === "POST" && url.pathname === "/api/admin/config") {
@@ -1223,11 +1505,27 @@ const server = http.createServer((req, res) => {
     handleFeishuSupplierLinks(req, res);
     return;
   }
+  if (req.method === "GET" && url.pathname === "/api/admin/tiktok/connection") {
+    handleTikTokConnection(res);
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/api/admin/tiktok/auth-url") {
+    handleTikTokAuthUrl(req, res);
+    return;
+  }
+  if (req.method === "POST" && url.pathname === "/api/admin/tiktok/shops") {
+    handleTikTokRefreshShops(res);
+    return;
+  }
+  if (req.method === "POST" && url.pathname === "/api/admin/tiktok/products") {
+    handleTikTokSyncProducts(req, res);
+    return;
+  }
   if (req.method === "POST" && url.pathname === "/api/admin/reset-stats") {
     const state = readState();
     state.stats = { ...defaultState.stats, todayKey: todayKey() };
     writeState(state);
-    sendJson(res, 200, { config: state.config, stats: state.stats, account: accountSnapshot(state), lastResult: state.lastResult });
+    sendJson(res, 200, adminStatePayload(state));
     return;
   }
   if (req.method === "POST" && url.pathname === "/api/admin/apify-last") {

@@ -3,6 +3,7 @@ const state = {
   stats: null,
   account: null,
   lastResult: null,
+  tiktok: null,
 };
 
 const el = {
@@ -40,6 +41,13 @@ const el = {
   loadLastRun: document.querySelector("#loadLastRun"),
   refreshRuns: document.querySelector("#refreshRuns"),
   resetStats: document.querySelector("#resetStats"),
+  tiktokConnectionStatus: document.querySelector("#tiktokConnectionStatus"),
+  tiktokConnectionDetail: document.querySelector("#tiktokConnectionDetail"),
+  connectTikTokShop: document.querySelector("#connectTikTokShop"),
+  refreshTikTokShops: document.querySelector("#refreshTikTokShops"),
+  syncTikTokProducts: document.querySelector("#syncTikTokProducts"),
+  tiktokShopList: document.querySelector("#tiktokShopList"),
+  tiktokProductList: document.querySelector("#tiktokProductList"),
   accountDetail: document.querySelector("#accountDetail"),
   lastError: document.querySelector("#lastError"),
   search: document.querySelector("#search"),
@@ -147,8 +155,111 @@ function renderStats() {
   const tokenText = account.apifyConfigured ? "Token 已配置，内容已隐藏" : "Token 未配置";
   const supplierText = account.supplierDetailConfigured ? `${account.supplierDetailProvider || "-"} 已配置` : `${account.supplierDetailProvider || "-"} 缺 Token`;
   const feishuText = account.feishuConfigured ? "飞书表格已配置" : "飞书表格未配置或缺密钥";
-  el.accountDetail.textContent = `当前数据源：${account.provider || "-"}，搜索 Actor：${account.searchActorId || "-"}，${tokenText}；货源详情：${supplierText}；${feishuText}；${protectedText}。线上请在部署平台 Secrets 中配置 APIFY_TOKEN、PARSE_API_KEY、LARK_APP_ID、LARK_APP_SECRET 和 ADMIN_PASSWORD。`;
+  const tiktokText = account.tiktokAuthorized ? `TikTok 已授权 ${account.tiktokShopCount || 0} 个店铺` : account.tiktokConfigured ? "TikTok Key 已配置，待授权店铺" : "TikTok Key 未配置";
+  el.accountDetail.textContent = `当前数据源：${account.provider || "-"}，搜索 Actor：${account.searchActorId || "-"}，${tokenText}；货源详情：${supplierText}；${feishuText}；${tiktokText}；${protectedText}。线上请在部署平台 Secrets 中配置 APIFY_TOKEN、PARSE_API_KEY、LARK_APP_ID、LARK_APP_SECRET、TIKTOK_APP_KEY、TIKTOK_APP_SECRET、TIKTOK_SERVICE_ID、TIKTOK_REDIRECT_URI 和 ADMIN_PASSWORD。`;
   el.lastError.textContent = stats.lastError ? `最近错误：${stats.lastError}` : "";
+}
+
+function renderTikTokConnection(connection = state.tiktok) {
+  const tiktok = connection || {};
+  if (!el.tiktokConnectionStatus) return;
+  if (!tiktok.configured) {
+    el.tiktokConnectionStatus.textContent = "缺少 Key / Secret";
+    el.tiktokConnectionDetail.textContent = "请在 Render Environment Variables 添加 TIKTOK_APP_KEY、TIKTOK_APP_SECRET、TIKTOK_SERVICE_ID、TIKTOK_REDIRECT_URI，然后重新部署。";
+  } else if (!tiktok.authorized) {
+    el.tiktokConnectionStatus.textContent = "未授权店铺";
+    el.tiktokConnectionDetail.textContent = tiktok.lastError || "配置已就绪，点击 Connect TikTok Shop 后用店铺账号授权。";
+  } else {
+    const shopText = tiktok.shops?.length ? `${tiktok.shops.length} 个店铺` : "未读取到店铺";
+    const syncText = tiktok.lastSyncAt ? `最近同步：${new Date(tiktok.lastSyncAt).toLocaleString()}` : "尚未同步商品";
+    el.tiktokConnectionStatus.textContent = "已授权";
+    el.tiktokConnectionDetail.textContent = `${shopText}；${syncText}。`;
+  }
+
+  el.refreshTikTokShops.disabled = !tiktok.authorized;
+  el.syncTikTokProducts.disabled = !tiktok.authorized;
+  renderTikTokShops(tiktok.shops || []);
+  renderTikTokProducts(tiktok.products || []);
+}
+
+function renderTikTokShops(shops) {
+  el.tiktokShopList.innerHTML = `
+    <h4>Authorized Shops</h4>
+    ${shops.length ? shops.map((shop) => `
+      <div class="mini-row">
+        <strong>${escapeHtml(shop.name || shop.id || "TikTok Shop")}</strong>
+        <span>${escapeHtml([shop.region, shop.seller_type, shop.code].filter(Boolean).join(" · ") || "-")}</span>
+      </div>
+    `).join("") : `<p>暂无店铺。授权后会显示店铺市场和店铺编码。</p>`}
+  `;
+}
+
+function renderTikTokProducts(products) {
+  el.tiktokProductList.innerHTML = `
+    <h4>Shop Products</h4>
+    ${products.length ? products.slice(0, 8).map((product) => `
+      <div class="mini-row">
+        <strong>${escapeHtml(product.title || "Untitled product")}</strong>
+        <span>${escapeHtml([product.status, product.currency && product.price ? `${product.currency} ${product.price}` : "", product.inventory == null ? "" : `Stock ${product.inventory}`].filter(Boolean).join(" · ") || "-")}</span>
+      </div>
+    `).join("") : `<p>暂无商品。授权店铺后点 Sync Products。</p>`}
+  `;
+}
+
+async function loadTikTokConnection() {
+  const response = await fetch("/api/admin/tiktok/connection");
+  const payload = await response.json();
+  if (!response.ok || payload.error) throw new Error(payload.error || "TikTok 状态读取失败");
+  state.tiktok = payload;
+  renderTikTokConnection(payload);
+}
+
+async function connectTikTokShop() {
+  el.connectTikTokShop.disabled = true;
+  el.connectTikTokShop.textContent = "Opening...";
+  try {
+    const response = await fetch("/api/admin/tiktok/auth-url");
+    const payload = await response.json();
+    if (!response.ok || payload.error) throw new Error(payload.error || "无法生成授权链接");
+    window.location.href = payload.url;
+  } finally {
+    el.connectTikTokShop.disabled = false;
+    el.connectTikTokShop.textContent = "Connect TikTok Shop";
+  }
+}
+
+async function refreshTikTokShops() {
+  el.refreshTikTokShops.disabled = true;
+  el.refreshTikTokShops.textContent = "Refreshing...";
+  try {
+    const response = await fetch("/api/admin/tiktok/shops", { method: "POST" });
+    const payload = await response.json();
+    if (!response.ok || payload.error) throw new Error(payload.error || "店铺读取失败");
+    state.tiktok = payload;
+    renderTikTokConnection(payload);
+  } finally {
+    el.refreshTikTokShops.disabled = false;
+    el.refreshTikTokShops.textContent = "Refresh Shops";
+  }
+}
+
+async function syncTikTokProducts() {
+  el.syncTikTokProducts.disabled = true;
+  el.syncTikTokProducts.textContent = "Syncing...";
+  try {
+    const response = await fetch("/api/admin/tiktok/products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ limit: 50 }),
+    });
+    const payload = await response.json();
+    if (!response.ok || payload.error) throw new Error(payload.error || "商品同步失败");
+    state.tiktok = payload;
+    renderTikTokConnection(payload);
+  } finally {
+    el.syncTikTokProducts.disabled = false;
+    el.syncTikTokProducts.textContent = "Sync Products";
+  }
 }
 
 function keywordsFromItems() {
@@ -902,6 +1013,7 @@ function applyState(payload) {
   state.stats = payload.stats;
   state.account = payload.account;
   state.lastResult = payload.lastResult;
+  state.tiktok = payload.tiktok || state.tiktok;
   fillForm();
   syncKeywordFilter();
   syncMarketFilter();
@@ -909,6 +1021,7 @@ function applyState(payload) {
   renderRows();
   updateAnalysisSummary();
   renderSourcingAdvice();
+  renderTikTokConnection(state.tiktok);
 }
 
 async function loadState() {
@@ -1122,6 +1235,30 @@ el.importSupplierLinks.addEventListener("click", async () => {
     `;
   }
 });
+el.connectTikTokShop.addEventListener("click", async () => {
+  try {
+    await connectTikTokShop();
+  } catch (error) {
+    alert(`TikTok 授权入口打开失败：${error.message}`);
+    await loadTikTokConnection().catch(() => {});
+  }
+});
+el.refreshTikTokShops.addEventListener("click", async () => {
+  try {
+    await refreshTikTokShops();
+  } catch (error) {
+    alert(`TikTok 店铺读取失败：${error.message}`);
+    await loadTikTokConnection().catch(() => {});
+  }
+});
+el.syncTikTokProducts.addEventListener("click", async () => {
+  try {
+    await syncTikTokProducts();
+  } catch (error) {
+    alert(`TikTok 商品同步失败：${error.message}`);
+    await loadTikTokConnection().catch(() => {});
+  }
+});
 el.configPageTab.addEventListener("click", () => setAdminPage("config"));
 el.rankingPageTab.addEventListener("click", () => setAdminPage("ranking"));
 el.supplierPageTab.addEventListener("click", () => setAdminPage("supplier"));
@@ -1129,6 +1266,10 @@ el.supplierPageTab.addEventListener("click", () => setAdminPage("supplier"));
 loadState().catch((error) => {
   el.saveStatus.textContent = "读取失败";
   alert(`后台读取失败：${error.message}`);
+});
+
+loadTikTokConnection().catch(() => {
+  renderTikTokConnection({ configured: false, authorized: false, shops: [], products: [] });
 });
 
 loadRuns().catch(() => {
