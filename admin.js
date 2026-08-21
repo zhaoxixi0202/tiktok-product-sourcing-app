@@ -112,6 +112,7 @@ const i18n = {
     noShopRead: "未读取到店铺",
     noSync: "尚未同步商品",
     lastSync: (value) => `最近同步：${value}`,
+    scopesLine: (required, granted) => `需要权限：${required || "-"}；Token 已授权：${granted || "TikTok 未返回 scopes，若仍报错请重置授权后重新连接"}`,
     secretNote: "App Key、App Secret、Redirect URL 只在 Render Environment Variables 里配置。页面只显示授权状态，不显示密钥。",
     authorizedShops: "已授权店铺",
     noShops: "暂无店铺。授权后会显示店铺市场和店铺编码。",
@@ -158,6 +159,7 @@ const i18n = {
     noShopRead: "No shop loaded",
     noSync: "Products not synced yet",
     lastSync: (value) => `Last sync: ${value}`,
+    scopesLine: (required, granted) => `Required scopes: ${required || "-"}; Token scopes: ${granted || "TikTok did not return scopes. Reset auth and reconnect if it still fails."}`,
     secretNote: "App Key, App Secret, and Redirect URL stay in Render Environment Variables. This page never displays secrets.",
     authorizedShops: "Authorized Shops",
     noShops: "No shops yet. Authorized shops will show market and shop code here.",
@@ -311,8 +313,10 @@ function renderTikTokConnection(connection = state.tiktok) {
   } else {
     const shopText = tiktok.shops?.length ? t("shopsCount", tiktok.shops.length) : t("noShopRead");
     const syncText = tiktok.lastSyncAt ? t("lastSync", new Date(tiktok.lastSyncAt).toLocaleString()) : t("noSync");
+    const requiredScopes = (tiktok.requiredScopes || []).join(", ");
+    const grantedScopes = (tiktok.scopes || []).join(", ");
     el.tiktokConnectionStatus.textContent = t("authorized");
-    el.tiktokConnectionDetail.textContent = `${shopText}；${syncText}。`;
+    el.tiktokConnectionDetail.textContent = `${shopText}；${syncText}。${t("scopesLine", requiredScopes, grantedScopes)}`;
   }
 
   el.refreshTikTokShops.disabled = !tiktok.authorized;

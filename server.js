@@ -265,6 +265,7 @@ function publicTikTokConnection(tiktok) {
     refreshTokenExpiresAt: token?.refreshTokenExpiresAt || null,
     openId: token?.openId || "",
     scopes: token?.grantedScopes || [],
+    requiredScopes: ["seller.authorization.info", "seller.global_product.info", "seller.shop.info"],
     shops,
     products,
     lastSyncAt: tiktok?.lastSyncAt || null,
@@ -762,7 +763,11 @@ async function callTikTokApi(pathname, options = {}) {
   });
   const payload = await response.json();
   if (!response.ok || payload.code !== 0) {
-    throw new Error(payload.message || `TikTok API failed: HTTP ${response.status}`);
+    const message = payload.message || `TikTok API failed: HTTP ${response.status}`;
+    if (/scope|authorized to access the endpoint|access denied/i.test(message)) {
+      throw new Error(`${message} Required scope for this step may be missing from the access token. Reset TikTok auth, reconnect, and confirm seller.authorization.info is Active.`);
+    }
+    throw new Error(message);
   }
   return payload.data || {};
 }
