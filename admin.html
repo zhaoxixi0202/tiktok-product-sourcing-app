@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Product Sourcing Admin</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell admin-shell">
+      <section class="toolbar" aria-label="Admin">
+        <div>
+          <h1>Product Sourcing Admin</h1>
+          <p>统一管理数据源、关键词池、默认筛选条件、账号权限和查询次数。</p>
+        </div>
+        <a class="admin-link" href="/">返回前台榜单</a>
+        <nav class="tabs admin-tabs" aria-label="Admin pages">
+          <button class="tab active" id="configPageTab" type="button">配置中心</button>
+          <button class="tab" id="rankingPageTab" type="button">榜单分析</button>
+          <button class="tab" id="supplierPageTab" type="button">Supplier Review</button>
+        </nav>
+      </section>
+
+      <section class="summary admin-summary" aria-label="Account and usage">
+        <div>
+          <span>账号权限</span>
+          <strong id="permissionStatus">读取中</strong>
+        </div>
+        <div>
+          <span>本次关键词</span>
+          <strong id="keywordSummary">-</strong>
+        </div>
+      </section>
+
+      <div id="configPage">
+      <section class="config-panel" aria-label="Backend Configuration">
+        <div class="config-head">
+          <div>
+            <h2>后台配置</h2>
+            <p>Token 存在服务器环境变量里，本地可用 .env，线上请放到部署平台的 Secrets。</p>
+          </div>
+          <span id="saveStatus">未保存</span>
+        </div>
+        <form class="admin-form" id="configForm">
+          <fieldset class="form-section">
+            <legend>Ranking Data Source</legend>
+            <label>
+              数据源
+              <select id="provider">
+                <option value="apify">Apify</option>
+                <option value="kalodata">Kalodata</option>
+                <option value="4seller">4Seller</option>
+                <option value="generic">Generic API</option>
+                <option value="demo">Demo</option>
+              </select>
+            </label>
+            <label>
+              API Base URL
+              <input id="apiBaseUrl" type="url" placeholder="Apify / 4Seller / Generic API endpoint" />
+            </label>
+            <label>
+              搜索 Actor ID
+              <input id="searchActorId" type="text" placeholder="unseenuser~tiktok-shop-scraper" />
+            </label>
+            <label>
+              详情 Actor ID
+              <input id="detailActorId" type="text" placeholder="pratikdani~tiktok-shop-scraper" />
+            </label>
+            <label>
+              默认地区
+              <select id="defaultRegion">
+                <option value="SG">新加坡 SG</option>
+                <option value="MY">马来西亚 MY</option>
+                <option value="TH">泰国 TH</option>
+                <option value="VN">越南 VN</option>
+                <option value="ID">印尼 ID</option>
+                <option value="PH">菲律宾 PH</option>
+                <option value="US">美国 US</option>
+                <option value="UK">英国 UK</option>
+              </select>
+            </label>
+            <label>
+              默认类目
+              <select id="defaultCategory">
+                <option>Fashion Accessories</option>
+                <option>Beauty & Personal Care</option>
+                <option>Home & Living</option>
+                <option>Mom & Baby</option>
+                <option>Electronics</option>
+              </select>
+            </label>
+            <label>
+              时间范围
+              <select id="dateRange">
+                <option value="day">日榜</option>
+                <option value="last7Day">近 7 天</option>
+                <option value="last30Day">近 30 天</option>
+              </select>
+            </label>
+            <label>
+              币种
+              <input id="currency" type="text" placeholder="SGD" />
+            </label>
+            <label>
+              每个关键词条数
+              <input id="limitPerKeyword" type="number" min="1" max="100" />
+            </label>
+            <label>
+              页码
+              <input id="page" type="number" min="1" max="20" />
+            </label>
+            <label class="wide-field">
+              关键词池
+              <textarea id="keywords" rows="7" placeholder="hair clip&#10;earrings&#10;necklace"></textarea>
+            </label>
+          </fieldset>
+          <fieldset class="form-section compact-section">
+            <legend>Supplier Detail API</legend>
+            <label>
+              Provider
+              <select id="supplierDetailProvider">
+                <option value="parse1688">Parse 1688</option>
+                <option value="page-fetch">Page Fetch</option>
+                <option value="manual">Manual Only</option>
+              </select>
+            </label>
+            <label class="wide-field">
+              API URL
+              <input id="supplierDetailApiUrl" type="url" placeholder="https://api.parse.bot/scraper/bb0ade25-1595-4730-86be-b24affd889da" />
+            </label>
+            <p class="section-note">This only powers Supplier Risk Review. It does not change or replace the TikTok ranking list.</p>
+          </fieldset>
+          <fieldset class="form-section compact-section">
+            <legend>Feishu Import</legend>
+            <label class="wide-field">
+              Feishu URL
+              <input id="feishuSheetUrl" type="url" placeholder="https://.../base/... or https://.../sheets/..." />
+            </label>
+            <label>
+              Range / Field
+              <input id="feishuSheetRange" type="text" placeholder="Base 填字段名，如 1688商品链接；Sheet 填 Sheet1!A2:D200" />
+            </label>
+            <label>
+              Link Column / Base Table
+              <input id="feishuLinkColumn" type="text" placeholder="Base 可留空；Sheet 填 A or 1" />
+            </label>
+            <p class="section-note">Base 链接用字段名定位那一列；Sheet 链接用 Range + 列号。飞书密钥只放服务器环境变量 LARK_APP_ID / LARK_APP_SECRET。</p>
+          </fieldset>
+          <div class="admin-actions">
+            <button id="saveConfig" type="submit">保存配置</button>
+            <button class="secondary" id="runSearch" type="button">按配置抓取</button>
+            <button class="secondary" id="runAsyncSearch" type="button">异步抓取</button>
+            <button class="secondary" id="loadLastRun" type="button">读取上次成功结果</button>
+            <button class="secondary" id="refreshRuns" type="button">刷新历史</button>
+            <button class="secondary" id="resetStats" type="button">重置次数</button>
+          </div>
+        </form>
+        <div class="cost-note">
+          <strong>低消耗建议</strong>
+          <span>正式抓取前先点“读取上次成功结果”或使用 Demo。Apify 抓取会启动 Actor run；4Seller/Generic 会调用配置的热销榜接口，可能产生接口额度消耗。</span>
+        </div>
+        <p class="security-note" id="accountDetail"></p>
+        <p class="security-note" id="lastError"></p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>抓取状态与历史</h2>
+            <p id="jobStatus">暂无异步任务。同步抓取适合小批量；异步抓取适合关键词多或运行较慢的场景。</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Run ID</th>
+                <th>状态</th>
+                <th>开始时间</th>
+                <th>结束时间</th>
+                <th>Dataset</th>
+                <th>费用</th>
+              </tr>
+            </thead>
+            <tbody id="runRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="config-panel" aria-label="Token Guide">
+        <div class="config-head">
+          <div>
+            <h2>Token Setup</h2>
+            <p>按 Apify 官方方式获取 token，并只存到服务器环境变量，不在页面里保存明文。</p>
+          </div>
+          <a class="secondary-link" href="https://console.apify.com/settings/integrations" target="_blank" rel="noreferrer">Open Apify Console</a>
+        </div>
+        <div class="guide-grid">
+          <article>
+            <h3>1. 获取 Token</h3>
+            <p>进入 Apify Console 的 API & Integrations 页面，复制 API token。不要发给别人，也不要提交到代码仓库。</p>
+          </article>
+          <article>
+            <h3>2. 本地开发</h3>
+            <p>在项目根目录的 .env 中配置 APIFY_TOKEN。修改后需要重启本地服务。</p>
+            <pre>APIFY_TOKEN=your-apify-token</pre>
+          </article>
+          <article>
+            <h3>3. 线上发布</h3>
+            <p>在 Vercel、Render、Railway、Cloudflare 等平台的 Environment Variables / Secrets 中配置。</p>
+            <pre>APIFY_TOKEN
+ADMIN_PASSWORD</pre>
+          </article>
+          <article>
+            <h3>4. 调用方式</h3>
+            <p>后台使用 Apify 同步 dataset 输出接口：运行 Actor，等待短任务结束，并读取结果。</p>
+            <pre>/actors/{actorId}/run-sync-get-dataset-items</pre>
+          </article>
+          <article>
+            <h3>5. 热销榜接口</h3>
+            <p>如果使用 4Seller 或 Generic 数据源，把 API Key 放到环境变量。前台“后台抓取”会直接返回热销榜，不依赖 TikTok 页面登录。</p>
+            <pre>FOURSELLER_API_KEY
+TIKTOK_SOURCING_API_KEY</pre>
+          </article>
+        </div>
+      </section>
+      </div>
+
+      <div id="rankingPage" class="hidden">
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>后台榜单预览</h2>
+            <p id="analysisSummary">分析基于销量、GMV、增长、佣金、价格带、内容展示性和风险词。</p>
+            <p class="list-meta" id="listMeta">最近抓取时间：-</p>
+          </div>
+          <div class="panel-actions">
+            <input id="search" type="search" placeholder="搜索标题、店铺、关键词" />
+            <select id="recommendationFilter" aria-label="Recommendation filter">
+              <option value="all">全部建议</option>
+              <option value="recommend">只看推荐</option>
+              <option value="watch">只看观望</option>
+              <option value="avoid">只看规避</option>
+            </select>
+            <select id="keywordFilter" aria-label="Keyword filter">
+              <option value="all">全部关键词</option>
+            </select>
+            <select id="marketFilter" aria-label="Market filter">
+              <option value="all">全部市场</option>
+            </select>
+            <select id="typeFilter" aria-label="Type filter">
+              <option value="all">全部分类</option>
+              <option value="hair">Hair Accessories</option>
+              <option value="earrings">Earrings</option>
+              <option value="necklace">Necklace</option>
+              <option value="bag-card">Bag & Card</option>
+              <option value="other">Other</option>
+            </select>
+            <button class="secondary" id="analyzeProducts" type="button">分析</button>
+            <button class="secondary" id="downloadCsv" type="button">下载 CSV</button>
+          </div>
+        </div>
+        <section class="sourcing-advice" aria-label="Sourcing Advice">
+          <div class="advice-head">
+            <div>
+              <h3>选品建议</h3>
+              <p id="adviceSummary">结合榜单数据和 SG 本地场景偏好生成。</p>
+            </div>
+            <span id="adviceSignal">Local Taste Signals</span>
+          </div>
+          <div class="advice-grid" id="adviceGrid"></div>
+        </section>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>图片</th>
+                <th>排名</th>
+                <th>商品</th>
+                <th>价格</th>
+                <th>销量</th>
+                <th>GMV</th>
+                <th>增长</th>
+                <th>口碑</th>
+                <th>分析</th>
+                <th>市场</th>
+                <th>来源</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </section>
+      </div>
+
+      <div id="supplierPage" class="hidden">
+        <section class="supplier-risk supplier-risk-page" aria-label="Supplier Risk Review">
+          <div class="advice-head">
+            <div>
+              <h3>Supplier Risk Review</h3>
+              <p>批量粘贴 1688、Taobao、Pinduoduo 等货源链接或商品标题，输出是否上架和复核建议。</p>
+            </div>
+            <span id="supplierRiskBadge">No Review</span>
+          </div>
+          <div class="supplier-risk-workspace">
+            <div class="supplier-input-panel">
+              <label for="supplierInput">Supplier links or titles</label>
+              <textarea id="supplierInput" rows="10" placeholder="https://detail.1688.com/...&#10;https://item.taobao.com/...&#10;S925 pearl earrings hypoallergenic Korean style"></textarea>
+              <div class="feishu-import-box">
+                <strong>Feishu Import</strong>
+                <input id="supplierFeishuSheetUrl" type="url" placeholder="Feishu Base or Sheet URL" />
+                <div class="feishu-import-row">
+                  <input id="supplierFeishuSheetRange" type="text" placeholder="Base: 1688商品链接 / Sheet: Sheet1!A2:A100" />
+                  <input id="supplierFeishuLinkColumn" type="text" placeholder="Sheet: A" />
+                </div>
+              </div>
+              <div class="supplier-actions">
+                <button class="secondary" id="reviewSupplierRisk" type="button">Fetch & Review</button>
+                <button class="secondary" id="importSupplierLinks" type="button">Import from Feishu</button>
+                <span>One item per line. 能抓到评论时会一起纳入风险判断。</span>
+              </div>
+            </div>
+            <div class="supplier-result-panel">
+              <div class="risk-overview" id="supplierRiskGrid">
+                <div class="risk-empty">
+                  <strong>Ready to review</strong>
+                  <span>Paste supplier links or titles. If a marketplace blocks fetching, paste the product title/specs manually.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+    <script src="./admin.js"></script>
+  </body>
+</html>

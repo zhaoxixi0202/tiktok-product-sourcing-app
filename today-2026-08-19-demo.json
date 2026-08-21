@@ -1,0 +1,52 @@
+{
+  "source": "demo",
+  "region": "SG",
+  "category": "Fashion Accessories",
+  "dateRange": "last7Day",
+  "currency": "SGD",
+  "callTime": "2026-08-19 10:42:47",
+  "items": [
+    {
+      "rank": 1,
+      "productId": "demo-sg-earring-001",
+      "title": "Hypoallergenic Pearl Hoop Earrings for Office Outfit",
+      "price": 12.9,
+      "sales": 860,
+      "revenue": 11094.0,
+      "growthRate": 42.5,
+      "commissionRate": 15.0,
+      "shopName": "Demo Accessories",
+      "productUrl": "",
+      "launchDate": "2026-08-01",
+      "category": "Fashion Accessories"
+    },
+    {
+      "rank": 2,
+      "productId": "demo-sg-hairclip-002",
+      "title": "Large Acetate Hair Claw Clip for Hot Weather Hair Fix",
+      "price": 8.9,
+      "sales": 740,
+      "revenue": 6586.0,
+      "growthRate": 35.1,
+      "commissionRate": 18.0,
+      "shopName": "Demo Hair Studio",
+      "productUrl": "",
+      "launchDate": "2026-07-26",
+      "category": "Fashion Accessories"
+    },
+    {
+      "rank": 3,
+      "productId": "demo-sg-cardholder-003",
+      "title": "Mini Card Holder With Phone Strap for MRT Commute",
+      "price": 14.9,
+      "sales": 390,
+      "revenue": 5811.0,
+      "growthRate": 22.4,
+      "commissionRate": 12.0,
+      "shopName": "Demo Daily Carry",
+      "productUrl": "",
+      "launchDate": "2026-07-18",
+      "category": "Fashion Accessories"
+    }
+  ]
+}

@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Trend Product Radar</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="toolbar" aria-label="Filters">
+        <div>
+          <h1>Trend Product Radar</h1>
+          <p>前台只看商品榜单和选品判断；API、关键词池和账号权限在后台统一配置。</p>
+        </div>
+        <a class="admin-link" href="/admin">进入后台配置</a>
+        <div class="controls">
+          <label>
+            地区
+            <select id="region">
+              <option value="SG">新加坡 SG</option>
+              <option value="MY">马来西亚 MY</option>
+              <option value="TH">泰国 TH</option>
+              <option value="VN">越南 VN</option>
+              <option value="ID">印尼 ID</option>
+              <option value="PH">菲律宾 PH</option>
+            </select>
+          </label>
+          <label>
+            类目
+            <select id="category">
+              <option>Fashion Accessories</option>
+              <option>Beauty & Personal Care</option>
+              <option>Home & Living</option>
+              <option>Mom & Baby</option>
+              <option>Electronics</option>
+            </select>
+          </label>
+          <label>
+            时间
+            <select id="dateRange">
+              <option value="last7Day">近 7 天</option>
+              <option value="last30Day">近 30 天</option>
+            </select>
+          </label>
+          <label>
+            建议
+            <select id="recommendationFilter">
+              <option value="all">全部建议</option>
+              <option value="recommend">只看推荐</option>
+              <option value="watch">只看观望</option>
+              <option value="avoid">只看规避</option>
+            </select>
+          </label>
+          <button id="loadDemo" type="button">载入演示数据</button>
+          <button id="fetchBackend" type="button">后台抓取</button>
+          <label class="file-button">
+            导入 JSON
+            <input id="fileInput" type="file" accept="application/json" />
+          </label>
+        </div>
+      </section>
+
+      <section class="summary" id="summaryPanel" aria-label="Summary">
+        <div>
+          <span>数据来源</span>
+          <strong id="source">demo</strong>
+        </div>
+        <div>
+          <span>推荐商品</span>
+          <strong id="recommendCount">0</strong>
+        </div>
+        <div>
+          <span>平均分</span>
+          <strong id="avgScore">0</strong>
+        </div>
+        <div>
+          <span>建议客单</span>
+          <strong id="priceBand">SGD 5.9-19.9</strong>
+        </div>
+      </section>
+
+      <section class="panel" id="tablePanel">
+        <div class="panel-head">
+          <h2>商品榜单</h2>
+          <input id="search" type="search" placeholder="搜索标题、店铺、关键词" />
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>图片</th>
+                <th>排名</th>
+                <th>商品</th>
+                <th>价格</th>
+                <th>销量</th>
+                <th>GMV</th>
+                <th>增长</th>
+                <th>评分</th>
+                <th>建议</th>
+                <th>1688 关键词</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="notes" id="notesPanel">
+        <h2>使用建议</h2>
+        <div class="note-grid">
+          <article>
+            <h3>新店优先</h3>
+            <p>选低重量、低售后、镜头前变化明显的商品。饰品、抓夹、卡包比大件和尺码款更适合冷启动。</p>
+          </article>
+          <article>
+            <h3>达人样品</h3>
+            <p>先寄 5-10 个低成本高展示款，要求确认挂车视频，再扩大样品预算。</p>
+          </article>
+          <article>
+            <h3>API 接入</h3>
+            <p>后端可调用 Skill 的 product_rank.py；前端也支持导入第三方 API 导出的标准 JSON。</p>
+          </article>
+        </div>
+      </section>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>
