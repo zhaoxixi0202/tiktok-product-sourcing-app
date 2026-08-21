@@ -780,7 +780,7 @@ async function fetchTikTokAuthorizedShops() {
 function normalizeTikTokShopProduct(product, index, shop) {
   const firstSku = Array.isArray(product.skus) ? product.skus[0] || {} : {};
   const price = firstSku.price || product.price || {};
-  const image = product.main_images?.[0]?.urls?.[0] || product.main_images?.[0]?.url || product.images?.[0]?.url || "";
+  const image = firstTikTokImage(product) || firstTikTokImage(firstSku);
   return {
     rank: index + 1,
     productId: String(product.id || product.product_id || ""),
@@ -796,6 +796,43 @@ function normalizeTikTokShopProduct(product, index, shop) {
     shopRegion: shop?.region || "",
     shopCipher: shop?.cipher || "",
   };
+}
+
+function firstTikTokImage(value, depth = 0) {
+  if (!value || depth > 4) return "";
+  if (typeof value === "string") {
+    return /^https?:\/\//i.test(value) ? value : "";
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = firstTikTokImage(item, depth + 1);
+      if (found) return found;
+    }
+    return "";
+  }
+  if (typeof value !== "object") return "";
+  const preferredKeys = [
+    "url",
+    "image_url",
+    "imageUrl",
+    "thumb_url",
+    "thumbUrl",
+    "thumbnail_url",
+    "thumbnailUrl",
+    "cover_url",
+    "coverUrl",
+    "display_url",
+    "displayUrl",
+  ];
+  for (const key of preferredKeys) {
+    const found = firstTikTokImage(value[key], depth + 1);
+    if (found) return found;
+  }
+  for (const key of ["urls", "url_list", "urlList", "main_images", "mainImages", "images", "image", "picture", "pictures", "media"]) {
+    const found = firstTikTokImage(value[key], depth + 1);
+    if (found) return found;
+  }
+  return "";
 }
 
 async function syncTikTokProducts(limit = 50) {
