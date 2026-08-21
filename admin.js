@@ -13,6 +13,7 @@ const el = {
   configPage: document.querySelector("#configPage"),
   rankingPage: document.querySelector("#rankingPage"),
   supplierPage: document.querySelector("#supplierPage"),
+  logoutButton: document.querySelector("#logoutButton"),
   permissionStatus: document.querySelector("#permissionStatus"),
   keywordSummary: document.querySelector("#keywordSummary"),
   saveStatus: document.querySelector("#saveStatus"),
@@ -156,7 +157,7 @@ function renderStats() {
   const supplierText = account.supplierDetailConfigured ? `${account.supplierDetailProvider || "-"} 已配置` : `${account.supplierDetailProvider || "-"} 缺 Token`;
   const feishuText = account.feishuConfigured ? "飞书表格已配置" : "飞书表格未配置或缺密钥";
   const tiktokText = account.tiktokAuthorized ? `TikTok 已授权 ${account.tiktokShopCount || 0} 个店铺` : account.tiktokConfigured ? "TikTok Key 已配置，待授权店铺" : "TikTok Key 未配置";
-  el.accountDetail.textContent = `当前数据源：${account.provider || "-"}，搜索 Actor：${account.searchActorId || "-"}，${tokenText}；货源详情：${supplierText}；${feishuText}；${tiktokText}；${protectedText}。线上请在部署平台 Secrets 中配置 APIFY_TOKEN、PARSE_API_KEY、LARK_APP_ID、LARK_APP_SECRET、TIKTOK_APP_KEY、TIKTOK_APP_SECRET、TIKTOK_SERVICE_ID、TIKTOK_REDIRECT_URI 和 ADMIN_PASSWORD。`;
+  el.accountDetail.textContent = `当前数据源：${account.provider || "-"}，搜索 Actor：${account.searchActorId || "-"}，${tokenText}；货源详情：${supplierText}；${feishuText}；${tiktokText}；${protectedText}。线上请在部署平台 Secrets 中配置 ADMIN_USERNAME、ADMIN_PASSWORD、APIFY_TOKEN、PARSE_API_KEY、LARK_APP_ID、LARK_APP_SECRET、TIKTOK_APP_KEY、TIKTOK_APP_SECRET、TIKTOK_SERVICE_ID 和 TIKTOK_REDIRECT_URI。`;
   el.lastError.textContent = stats.lastError ? `最近错误：${stats.lastError}` : "";
 }
 
@@ -1258,6 +1259,10 @@ el.syncTikTokProducts.addEventListener("click", async () => {
     alert(`TikTok 商品同步失败：${error.message}`);
     await loadTikTokConnection().catch(() => {});
   }
+});
+el.logoutButton.addEventListener("click", async () => {
+  await fetch("/api/admin/logout", { method: "POST" }).catch(() => {});
+  window.location.href = "/login";
 });
 el.configPageTab.addEventListener("click", () => setAdminPage("config"));
 el.rankingPageTab.addEventListener("click", () => setAdminPage("ranking"));

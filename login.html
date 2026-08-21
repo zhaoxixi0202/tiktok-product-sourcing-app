@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Product Sourcing Login</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="login-body">
+    <main class="login-shell">
+      <section class="login-panel" aria-label="Admin login">
+        <div>
+          <span class="eyebrow">Private Admin</span>
+          <h1>Product Sourcing Admin</h1>
+          <p>请输入后台账号后继续访问配置、榜单和货源审核。</p>
+        </div>
+        <form id="loginForm" class="login-form">
+          <label>
+            Account
+            <input id="username" type="text" autocomplete="username" placeholder="admin" required />
+          </label>
+          <label>
+            Password
+            <input id="password" type="password" autocomplete="current-password" placeholder="后台密码" required />
+          </label>
+          <button id="loginButton" type="submit">Login</button>
+          <p id="loginMessage" class="login-message"></p>
+        </form>
+      </section>
+    </main>
+    <script src="./login.js"></script>
+  </body>
+</html>

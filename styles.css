@@ -178,6 +178,13 @@ a:hover {
   text-decoration: none;
 }
 
+.toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
 button.secondary {
   background: #fff;
   color: #344054;
@@ -364,6 +371,54 @@ button.secondary {
   color: #e5e7eb;
   font-size: 13px;
   line-height: 1.55;
+}
+
+.login-body {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+}
+
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.login-panel {
+  width: min(440px, 100%);
+  display: grid;
+  gap: 22px;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 20px 45px rgb(15 23 42 / 8%);
+}
+
+.login-panel h1 {
+  font-size: 28px;
+}
+
+.login-panel p {
+  margin-top: 8px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.login-form {
+  display: grid;
+  gap: 14px;
+}
+
+.login-form button {
+  width: 100%;
+}
+
+.login-message {
+  min-height: 20px;
+  color: #b42318;
+  font-size: 13px;
 }
 
 .security-note {

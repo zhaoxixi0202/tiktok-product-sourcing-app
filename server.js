@@ -8,6 +8,7 @@ const port = Number(process.env.PORT || 8787);
 const stateDir = path.join(root, "data");
 const stateFile = path.join(stateDir, "app-state.json");
 const jobs = new Map();
+const sessions = new Map();
 
 loadEnv(path.join(root, ".env"));
 
@@ -277,13 +278,14 @@ function providerConfigured(config) {
   return Boolean(providerApiKey(config.provider));
 }
 
-function sendUnauthorized(res) {
-  res.writeHead(401, {
-    "WWW-Authenticate": 'Basic realm="Product Sourcing Admin", charset="UTF-8"',
-    "Content-Type": "text/plain; charset=utf-8",
-    "Cache-Control": "no-store",
-  });
-  res.end("Authentication required");
+function sendUnauthorized(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  if (url.pathname === "/admin" || url.pathname === "/admin.html") {
+    res.writeHead(302, { Location: `/login?next=${encodeURIComponent(url.pathname)}` });
+    res.end();
+    return;
+  }
+  sendJson(res, 401, { error: "请先登录后台账号" });
 }
 
 function secureCompare(left, right) {
@@ -308,18 +310,50 @@ function isAdminRequest(url) {
   return url.pathname === "/admin" || url.pathname === "/admin.html" || url.pathname === "/admin.js" || url.pathname.startsWith("/api/admin") || url.pathname === "/api/products/search" || url.pathname === "/api/products/search-async";
 }
 
+function parseCookies(req) {
+  const header = req.headers.cookie || "";
+  return Object.fromEntries(header.split(";").map((part) => {
+    const index = part.indexOf("=");
+    if (index === -1) return ["", ""];
+    return [part.slice(0, index).trim(), decodeURIComponent(part.slice(index + 1).trim())];
+  }).filter(([key]) => key));
+}
+
+function sessionCookieOptions(req, maxAge) {
+  const secure = req.headers["x-forwarded-proto"] === "https" || String(req.headers.host || "").includes("onrender.com");
+  return [
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    secure ? "Secure" : "",
+    maxAge != null ? `Max-Age=${maxAge}` : "",
+  ].filter(Boolean).join("; ");
+}
+
+function createSession(username) {
+  const token = crypto.randomBytes(32).toString("hex");
+  sessions.set(token, {
+    username,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 1000 * 60 * 60 * 24 * 7,
+  });
+  return token;
+}
+
+function currentSession(req) {
+  const token = parseCookies(req).ps_session || "";
+  const session = sessions.get(token);
+  if (!session) return null;
+  if (session.expiresAt < Date.now()) {
+    sessions.delete(token);
+    return null;
+  }
+  return { token, ...session };
+}
+
 function isAuthorized(req) {
   if (!isAdminProtected()) return true;
-  const header = req.headers.authorization || "";
-  if (!header.startsWith("Basic ")) return false;
-  try {
-    const decoded = Buffer.from(header.slice(6), "base64").toString("utf8");
-    const separator = decoded.indexOf(":");
-    const password = separator >= 0 ? decoded.slice(separator + 1) : "";
-    return secureCompare(password, process.env.ADMIN_PASSWORD);
-  } catch {
-    return false;
-  }
+  return Boolean(currentSession(req));
 }
 
 function readBody(req) {
@@ -339,7 +373,7 @@ function readBody(req) {
 
 function serveStatic(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
-  const pathname = url.pathname === "/" ? "/index.html" : url.pathname === "/admin" ? "/admin.html" : url.pathname;
+  const pathname = url.pathname === "/" ? "/index.html" : url.pathname === "/admin" ? "/admin.html" : url.pathname === "/login" ? "/login.html" : url.pathname;
   const filePath = path.normalize(path.join(root, pathname));
   if (!filePath.startsWith(root)) {
     res.writeHead(403);
@@ -362,6 +396,45 @@ function serveStatic(req, res) {
     res.writeHead(200, { "Content-Type": type });
     res.end(data);
   });
+}
+
+async function handleLogin(req, res) {
+  try {
+    if (!isAdminProtected()) {
+      sendJson(res, 200, { ok: true, disabled: true });
+      return;
+    }
+    const body = JSON.parse((await readBody(req)) || "{}");
+    const expectedUsername = process.env.ADMIN_USERNAME || "admin";
+    const username = String(body.username || "").trim();
+    const password = String(body.password || "");
+    const usernameOk = secureCompare(username, expectedUsername);
+    const passwordOk = secureCompare(password, process.env.ADMIN_PASSWORD);
+    if (!usernameOk || !passwordOk) {
+      sendJson(res, 401, { error: "账号或密码不正确" });
+      return;
+    }
+    const token = createSession(username);
+    res.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "Set-Cookie": `ps_session=${encodeURIComponent(token)}; ${sessionCookieOptions(req, 60 * 60 * 24 * 7)}`,
+    });
+    res.end(JSON.stringify({ ok: true, username }));
+  } catch (error) {
+    sendJson(res, 400, { error: error.message });
+  }
+}
+
+function handleLogout(req, res) {
+  const token = parseCookies(req).ps_session || "";
+  if (token) sessions.delete(token);
+  res.writeHead(200, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    "Set-Cookie": `ps_session=; ${sessionCookieOptions(req, 0)}`,
+  });
+  res.end(JSON.stringify({ ok: true }));
 }
 
 function todayKey() {
@@ -1480,12 +1553,24 @@ async function handleTikTokSyncProducts(req, res) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
+  if (req.method === "POST" && url.pathname === "/api/login") {
+    handleLogin(req, res);
+    return;
+  }
+  if (req.method === "GET" && (url.pathname === "/login" || url.pathname === "/login.html")) {
+    serveStatic(req, res);
+    return;
+  }
   if (req.method === "GET" && url.pathname === "/api/tiktok/callback") {
     handleTikTokCallback(req, res, url);
     return;
   }
   if (isAdminRequest(url) && !isAuthorized(req)) {
-    sendUnauthorized(res);
+    sendUnauthorized(req, res);
+    return;
+  }
+  if (req.method === "POST" && url.pathname === "/api/admin/logout") {
+    handleLogout(req, res);
     return;
   }
   if (req.method === "GET" && (url.pathname === "/api/config" || url.pathname === "/api/admin/state")) {
