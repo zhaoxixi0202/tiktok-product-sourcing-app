@@ -115,6 +115,13 @@ const i18n = {
     noShops: "暂无店铺。授权后会显示店铺市场和店铺编码。",
     shopProducts: "店铺商品",
     noProducts: "暂无商品。授权店铺后点同步商品。",
+    productScore: "评分",
+    productAdvice: "建议",
+    productFields: "已获取字段",
+    productCanPush: "可优先优化",
+    productWatch: "先补充信息",
+    productAvoid: "暂缓",
+    productScoreSummary: (total, recommend, watch, avoid) => `已分析 ${total} 个店铺商品：可优先优化 ${recommend}，先补充信息 ${watch}，暂缓 ${avoid}。`,
     stock: "库存",
     typeHair: "头饰",
     typeEarrings: "耳饰",
@@ -153,6 +160,13 @@ const i18n = {
     noShops: "No shops yet. Authorized shops will show market and shop code here.",
     shopProducts: "Shop Products",
     noProducts: "No products yet. Authorize a shop, then click Sync Products.",
+    productScore: "Score",
+    productAdvice: "Advice",
+    productFields: "Fetched Fields",
+    productCanPush: "Optimize First",
+    productWatch: "Needs Work",
+    productAvoid: "Pause",
+    productScoreSummary: (total, recommend, watch, avoid) => `Analyzed ${total} shop products: ${recommend} optimize first, ${watch} need work, ${avoid} paused.`,
     stock: "Stock",
     typeHair: "Hair Accessories",
     typeEarrings: "Earrings",
@@ -316,15 +330,101 @@ function renderTikTokShops(shops) {
 }
 
 function renderTikTokProducts(products) {
+  const visibleProducts = products.slice(0, 12);
+  const analyses = products.map(scoreTikTokShopProduct);
+  const recommendCount = analyses.filter((item) => item.recommendation === "recommend").length;
+  const watchCount = analyses.filter((item) => item.recommendation === "watch").length;
+  const avoidCount = analyses.filter((item) => item.recommendation === "avoid").length;
   el.tiktokProductList.innerHTML = `
     <h4>${t("shopProducts")}</h4>
-    ${products.length ? products.slice(0, 8).map((product) => `
-      <div class="mini-row">
-        <strong>${escapeHtml(product.title || "Untitled product")}</strong>
-        <span>${escapeHtml([product.status, product.currency && product.price ? `${product.currency} ${product.price}` : "", product.inventory == null ? "" : `${t("stock")} ${product.inventory}`].filter(Boolean).join(" · ") || "-")}</span>
+    ${products.length ? `<p class="mini-summary">${t("productScoreSummary", products.length, recommendCount, watchCount, avoidCount)}</p>` : ""}
+    ${visibleProducts.length ? visibleProducts.map((product) => {
+      const analysis = scoreTikTokShopProduct(product);
+      return `
+      <div class="shop-product-row">
+        ${product.imageUrl ? `<img src="${escapeAttr(product.imageUrl)}" alt="${escapeAttr(product.title || "TikTok Shop product")}" loading="lazy" referrerpolicy="no-referrer" />` : `<div class="shop-product-image-empty">No image</div>`}
+        <div class="shop-product-main">
+          <strong>${escapeHtml(product.title || "Untitled product")}</strong>
+          <span>${escapeHtml([product.status, product.currency && product.price ? `${product.currency} ${product.price}` : "", product.inventory == null ? "" : `${t("stock")} ${product.inventory}`].filter(Boolean).join(" · ") || "-")}</span>
+          <small>${escapeHtml(analysis.reasons.join(" / "))}</small>
+        </div>
+        <div class="shop-product-score">
+          <span class="pill ${analysis.recommendation}">${analysis.label} ${analysis.score}</span>
+        </div>
       </div>
-    `).join("") : `<p>${t("noProducts")}</p>`}
+    `;
+    }).join("") : `<p>${t("noProducts")}</p>`}
   `;
+}
+
+function scoreTikTokShopProduct(product) {
+  const title = String(product.title || "").toLowerCase();
+  const status = String(product.status || "").toUpperCase();
+  const price = Number(product.price || 0);
+  const inventory = product.inventory == null ? null : Number(product.inventory || 0);
+  const reasons = [];
+  let score = 42;
+
+  if (status === "ACTIVATE" || status === "APPROVED") {
+    score += 18;
+    reasons.push(currentLanguage === "zh" ? "已上架/审核通过" : "Active or approved");
+  } else if (status === "PENDING" || status === "DRAFT") {
+    score -= 6;
+    reasons.push(currentLanguage === "zh" ? "待审核或草稿" : "Pending or draft");
+  } else if (status) {
+    score -= 14;
+    reasons.push(currentLanguage === "zh" ? `状态需复核：${status}` : `Check status: ${status}`);
+  }
+
+  if (price >= 5.9 && price <= 29.9) {
+    score += 16;
+    reasons.push(currentLanguage === "zh" ? "价格带适合配饰测款" : "Good accessory test price");
+  } else if (price > 0 && price < 5.9) {
+    score += 6;
+    reasons.push(currentLanguage === "zh" ? "低价款需确认利润" : "Low price, check margin");
+  } else if (price > 29.9 && price <= 99) {
+    score += 4;
+    reasons.push(currentLanguage === "zh" ? "客单较高，素材要突出质感" : "Higher price, content must prove value");
+  } else {
+    reasons.push(currentLanguage === "zh" ? "价格缺失或不在测试甜点区" : "Price missing or outside test range");
+  }
+
+  if (inventory == null) {
+    score -= 4;
+    reasons.push(currentLanguage === "zh" ? "库存未返回" : "Inventory unavailable");
+  } else if (inventory >= 20) {
+    score += 12;
+    reasons.push(currentLanguage === "zh" ? "库存有基础" : "Inventory available");
+  } else if (inventory > 0) {
+    score += 4;
+    reasons.push(currentLanguage === "zh" ? "库存偏浅" : "Low inventory");
+  } else {
+    score -= 18;
+    reasons.push(currentLanguage === "zh" ? "无可售库存" : "No sellable stock");
+  }
+
+  if (product.imageUrl) {
+    score += 10;
+    reasons.push(currentLanguage === "zh" ? "有主图" : "Main image available");
+  } else {
+    score -= 12;
+    reasons.push(currentLanguage === "zh" ? "缺主图" : "Missing main image");
+  }
+
+  if (/(hair|clip|earring|necklace|bracelet|ring|charm|bag|card|发夹|抓夹|耳环|耳钉|项链|手链|戒指|挂件|卡包)/.test(title)) {
+    score += 10;
+    reasons.push(currentLanguage === "zh" ? "配饰关键词明确" : "Clear accessory keyword");
+  }
+
+  if (/(replica|dupe|logo|disney|sanrio|hello kitty|kuromi|pokemon|chanel|dior|lv|gucci|prada|同款|大牌|复刻|高仿|原单|尾单|佛牌|宗教|美白|减肥|治疗)/.test(title)) {
+    score -= 30;
+    reasons.push(currentLanguage === "zh" ? "存在侵权/敏感风险词" : "IP or sensitive risk keyword");
+  }
+
+  score = Math.max(0, Math.min(100, Math.round(score)));
+  const recommendation = score >= 72 ? "recommend" : score >= 48 ? "watch" : "avoid";
+  const label = recommendation === "recommend" ? t("productCanPush") : recommendation === "watch" ? t("productWatch") : t("productAvoid");
+  return { score, recommendation, label, reasons: reasons.slice(0, 4) };
 }
 
 async function loadTikTokConnection() {
