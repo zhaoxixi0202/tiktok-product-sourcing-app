@@ -14,13 +14,18 @@
           <p>统一管理数据源、关键词池、默认筛选条件、账号权限和查询次数。</p>
         </div>
         <div class="toolbar-actions">
-          <a class="admin-link" href="/">返回前台榜单</a>
-          <button class="secondary" id="logoutButton" type="button">Logout</button>
+          <select id="languageSwitch" aria-label="Language">
+            <option value="zh">中文</option>
+            <option value="en">English</option>
+          </select>
+          <a class="admin-link" id="frontLink" href="/">返回前台榜单</a>
+          <button class="secondary" id="logoutButton" type="button">退出登录</button>
         </div>
         <nav class="tabs admin-tabs" aria-label="Admin pages">
           <button class="tab active" id="configPageTab" type="button">配置中心</button>
           <button class="tab" id="rankingPageTab" type="button">榜单分析</button>
-          <button class="tab" id="supplierPageTab" type="button">Supplier Review</button>
+          <button class="tab" id="tiktokPageTab" type="button">店铺商品</button>
+          <button class="tab" id="supplierPageTab" type="button">货源审核</button>
         </nav>
       </section>
 
@@ -45,28 +50,8 @@
           <span id="saveStatus">未保存</span>
         </div>
         <form class="admin-form" id="configForm">
-          <fieldset class="form-section compact-section">
-            <legend>TikTok Shop Connection</legend>
-            <div class="connection-card wide-field">
-              <div>
-                <span class="eyebrow">Official Open API</span>
-                <strong id="tiktokConnectionStatus">读取中</strong>
-                <p id="tiktokConnectionDetail">用于授权你的 TikTok Shop 店铺，并同步店铺商品列表。</p>
-              </div>
-              <div class="connection-actions">
-                <button class="secondary" id="connectTikTokShop" type="button">Connect TikTok Shop</button>
-                <button class="secondary" id="refreshTikTokShops" type="button">Refresh Shops</button>
-                <button class="secondary" id="syncTikTokProducts" type="button">Sync Products</button>
-              </div>
-            </div>
-            <div class="wide-field tiktok-connection-grid">
-              <div class="mini-table" id="tiktokShopList"></div>
-              <div class="mini-table" id="tiktokProductList"></div>
-            </div>
-            <p class="section-note">App Key、App Secret、Redirect URL 只在 Render Environment Variables 里配置。页面只显示授权状态，不显示密钥。</p>
-          </fieldset>
           <fieldset class="form-section">
-            <legend>Ranking Data Source</legend>
+            <legend>榜单数据源</legend>
             <label>
               数据源
               <select id="provider">
@@ -138,9 +123,9 @@
             </label>
           </fieldset>
           <fieldset class="form-section compact-section">
-            <legend>Supplier Detail API</legend>
+            <legend>货源详情接口</legend>
             <label>
-              Provider
+              服务商
               <select id="supplierDetailProvider">
                 <option value="parse1688">Parse 1688</option>
                 <option value="page-fetch">Page Fetch</option>
@@ -151,20 +136,20 @@
               API URL
               <input id="supplierDetailApiUrl" type="url" placeholder="https://api.parse.bot/scraper/bb0ade25-1595-4730-86be-b24affd889da" />
             </label>
-            <p class="section-note">This only powers Supplier Risk Review. It does not change or replace the TikTok ranking list.</p>
+            <p class="section-note">这里只用于货源风险审核，不会替换 TikTok 榜单数据源。</p>
           </fieldset>
           <fieldset class="form-section compact-section">
-            <legend>Feishu Import</legend>
+            <legend>飞书导入</legend>
             <label class="wide-field">
               Feishu URL
               <input id="feishuSheetUrl" type="url" placeholder="https://.../base/... or https://.../sheets/..." />
             </label>
             <label>
-              Range / Field
+              范围 / 字段
               <input id="feishuSheetRange" type="text" placeholder="Base 填字段名，如 1688商品链接；Sheet 填 Sheet1!A2:D200" />
             </label>
             <label>
-              Link Column / Base Table
+              链接列 / Base 表
               <input id="feishuLinkColumn" type="text" placeholder="Base 可留空；Sheet 填 A or 1" />
             </label>
             <p class="section-note">Base 链接用字段名定位那一列；Sheet 链接用 Range + 列号。飞书密钥只放服务器环境变量 LARK_APP_ID / LARK_APP_SECRET。</p>
@@ -213,10 +198,10 @@
       <section class="config-panel" aria-label="Token Guide">
         <div class="config-head">
           <div>
-            <h2>Token Setup</h2>
+            <h2>密钥配置</h2>
             <p>按 Apify 官方方式获取 token，并只存到服务器环境变量，不在页面里保存明文。</p>
           </div>
-          <a class="secondary-link" href="https://console.apify.com/settings/integrations" target="_blank" rel="noreferrer">Open Apify Console</a>
+          <a class="secondary-link" href="https://console.apify.com/settings/integrations" target="_blank" rel="noreferrer">打开 Apify 控制台</a>
         </div>
         <div class="guide-grid">
           <article>
@@ -249,6 +234,37 @@ TIKTOK_SOURCING_API_KEY</pre>
       </section>
       </div>
 
+      <div id="tiktokPage" class="hidden">
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2 id="tiktokPageTitle">店铺商品</h2>
+              <p id="tiktokPageDesc">授权 TikTok Shop 店铺后，同步并预览店铺商品列表。</p>
+            </div>
+            <div class="panel-actions">
+              <button class="secondary" id="connectTikTokShop" type="button">连接 TikTok Shop</button>
+              <button class="secondary" id="refreshTikTokShops" type="button">刷新店铺</button>
+              <button class="secondary" id="syncTikTokProducts" type="button">同步商品</button>
+            </div>
+          </div>
+          <section class="sourcing-advice">
+            <div class="advice-head">
+              <div>
+                <span class="eyebrow" id="tiktokConnectionEyebrow">官方 Open API</span>
+                <h3 id="tiktokConnectionStatus">读取中</h3>
+                <p id="tiktokConnectionDetail">用于授权你的 TikTok Shop 店铺，并同步店铺商品列表。</p>
+              </div>
+              <span id="tiktokConnectionBadge">店铺连接</span>
+            </div>
+            <p class="section-note" id="tiktokSecretNote">App Key、App Secret、Redirect URL 只在 Render Environment Variables 里配置。页面只显示授权状态，不显示密钥。</p>
+          </section>
+          <div class="tiktok-connection-grid tiktok-page-grid">
+            <div class="mini-table" id="tiktokShopList"></div>
+            <div class="mini-table" id="tiktokProductList"></div>
+          </div>
+        </section>
+      </div>
+
       <div id="rankingPage" class="hidden">
       <section class="panel">
         <div class="panel-head">
@@ -273,11 +289,11 @@ TIKTOK_SOURCING_API_KEY</pre>
             </select>
             <select id="typeFilter" aria-label="Type filter">
               <option value="all">全部分类</option>
-              <option value="hair">Hair Accessories</option>
-              <option value="earrings">Earrings</option>
-              <option value="necklace">Necklace</option>
-              <option value="bag-card">Bag & Card</option>
-              <option value="other">Other</option>
+              <option value="hair">头饰</option>
+              <option value="earrings">耳饰</option>
+              <option value="necklace">项链</option>
+              <option value="bag-card">包挂与卡包</option>
+              <option value="other">其他</option>
             </select>
             <button class="secondary" id="analyzeProducts" type="button">分析</button>
             <button class="secondary" id="downloadCsv" type="button">下载 CSV</button>
@@ -289,7 +305,7 @@ TIKTOK_SOURCING_API_KEY</pre>
               <h3>选品建议</h3>
               <p id="adviceSummary">结合榜单数据和 SG 本地场景偏好生成。</p>
             </div>
-            <span id="adviceSignal">Local Taste Signals</span>
+            <span id="adviceSignal">本地偏好信号</span>
           </div>
           <div class="advice-grid" id="adviceGrid"></div>
         </section>
@@ -320,17 +336,17 @@ TIKTOK_SOURCING_API_KEY</pre>
         <section class="supplier-risk supplier-risk-page" aria-label="Supplier Risk Review">
           <div class="advice-head">
             <div>
-              <h3>Supplier Risk Review</h3>
+              <h3>货源风险审核</h3>
               <p>批量粘贴 1688、Taobao、Pinduoduo 等货源链接或商品标题，输出是否上架和复核建议。</p>
             </div>
-            <span id="supplierRiskBadge">No Review</span>
+            <span id="supplierRiskBadge">未审核</span>
           </div>
           <div class="supplier-risk-workspace">
             <div class="supplier-input-panel">
-              <label for="supplierInput">Supplier links or titles</label>
+              <label for="supplierInput">货源链接或商品标题</label>
               <textarea id="supplierInput" rows="10" placeholder="https://detail.1688.com/...&#10;https://item.taobao.com/...&#10;S925 pearl earrings hypoallergenic Korean style"></textarea>
               <div class="feishu-import-box">
-                <strong>Feishu Import</strong>
+                <strong>飞书导入</strong>
                 <input id="supplierFeishuSheetUrl" type="url" placeholder="Feishu Base or Sheet URL" />
                 <div class="feishu-import-row">
                   <input id="supplierFeishuSheetRange" type="text" placeholder="Base: 1688商品链接 / Sheet: Sheet1!A2:A100" />
@@ -338,16 +354,16 @@ TIKTOK_SOURCING_API_KEY</pre>
                 </div>
               </div>
               <div class="supplier-actions">
-                <button class="secondary" id="reviewSupplierRisk" type="button">Fetch & Review</button>
-                <button class="secondary" id="importSupplierLinks" type="button">Import from Feishu</button>
+                <button class="secondary" id="reviewSupplierRisk" type="button">抓取并审核</button>
+                <button class="secondary" id="importSupplierLinks" type="button">从飞书导入</button>
                 <span>One item per line. 能抓到评论时会一起纳入风险判断。</span>
               </div>
             </div>
             <div class="supplier-result-panel">
               <div class="risk-overview" id="supplierRiskGrid">
                 <div class="risk-empty">
-                  <strong>Ready to review</strong>
-                  <span>Paste supplier links or titles. If a marketplace blocks fetching, paste the product title/specs manually.</span>
+                  <strong>准备审核</strong>
+                  <span>粘贴货源链接或标题。如果平台拦截抓取，可以手动粘贴标题、规格和价格。</span>
                 </div>
               </div>
             </div>

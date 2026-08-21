@@ -9,10 +9,14 @@ const state = {
 const el = {
   configPageTab: document.querySelector("#configPageTab"),
   rankingPageTab: document.querySelector("#rankingPageTab"),
+  tiktokPageTab: document.querySelector("#tiktokPageTab"),
   supplierPageTab: document.querySelector("#supplierPageTab"),
   configPage: document.querySelector("#configPage"),
   rankingPage: document.querySelector("#rankingPage"),
+  tiktokPage: document.querySelector("#tiktokPage"),
   supplierPage: document.querySelector("#supplierPage"),
+  languageSwitch: document.querySelector("#languageSwitch"),
+  frontLink: document.querySelector("#frontLink"),
   logoutButton: document.querySelector("#logoutButton"),
   permissionStatus: document.querySelector("#permissionStatus"),
   keywordSummary: document.querySelector("#keywordSummary"),
@@ -44,6 +48,11 @@ const el = {
   resetStats: document.querySelector("#resetStats"),
   tiktokConnectionStatus: document.querySelector("#tiktokConnectionStatus"),
   tiktokConnectionDetail: document.querySelector("#tiktokConnectionDetail"),
+  tiktokConnectionBadge: document.querySelector("#tiktokConnectionBadge"),
+  tiktokPageTitle: document.querySelector("#tiktokPageTitle"),
+  tiktokPageDesc: document.querySelector("#tiktokPageDesc"),
+  tiktokConnectionEyebrow: document.querySelector("#tiktokConnectionEyebrow"),
+  tiktokSecretNote: document.querySelector("#tiktokSecretNote"),
   connectTikTokShop: document.querySelector("#connectTikTokShop"),
   refreshTikTokShops: document.querySelector("#refreshTikTokShops"),
   syncTikTokProducts: document.querySelector("#syncTikTokProducts"),
@@ -75,6 +84,117 @@ const el = {
 
 let activeJobId = "";
 let jobTimer = null;
+let currentLanguage = localStorage.getItem("adminLanguage") || "zh";
+
+const i18n = {
+  zh: {
+    front: "返回前台榜单",
+    logout: "退出登录",
+    tabConfig: "配置中心",
+    tabRanking: "榜单分析",
+    tabTiktok: "店铺商品",
+    tabSupplier: "货源审核",
+    tiktokTitle: "店铺商品",
+    tiktokDesc: "授权 TikTok Shop 店铺后，同步并预览店铺商品列表。",
+    openApi: "官方 Open API",
+    connectionBadge: "店铺连接",
+    connect: "连接 TikTok Shop",
+    refreshShops: "刷新店铺",
+    syncProducts: "同步商品",
+    configuredMissing: "缺少 Key / Secret",
+    configuredMissingDetail: "请在 Render Environment Variables 添加 TIKTOK_APP_KEY、TIKTOK_APP_SECRET、TIKTOK_SERVICE_ID、TIKTOK_REDIRECT_URI，然后重新部署。",
+    notAuthorized: "未授权店铺",
+    notAuthorizedDetail: "配置已就绪，点击连接 TikTok Shop 后用店铺账号授权。",
+    authorized: "已授权",
+    shopsCount: (count) => `${count} 个店铺`,
+    noShopRead: "未读取到店铺",
+    noSync: "尚未同步商品",
+    lastSync: (value) => `最近同步：${value}`,
+    secretNote: "App Key、App Secret、Redirect URL 只在 Render Environment Variables 里配置。页面只显示授权状态，不显示密钥。",
+    authorizedShops: "已授权店铺",
+    noShops: "暂无店铺。授权后会显示店铺市场和店铺编码。",
+    shopProducts: "店铺商品",
+    noProducts: "暂无商品。授权店铺后点同步商品。",
+    stock: "库存",
+    typeHair: "头饰",
+    typeEarrings: "耳饰",
+    typeNecklace: "项链",
+    typeBagCard: "包挂与卡包",
+    typeOther: "其他",
+    opening: "打开中...",
+    refreshing: "刷新中...",
+    syncing: "同步中...",
+  },
+  en: {
+    front: "Back to Public List",
+    logout: "Logout",
+    tabConfig: "Settings",
+    tabRanking: "Ranking Analysis",
+    tabTiktok: "Shop Products",
+    tabSupplier: "Supplier Review",
+    tiktokTitle: "Shop Products",
+    tiktokDesc: "Authorize your TikTok Shop, then sync and preview your shop product list.",
+    openApi: "Official Open API",
+    connectionBadge: "Shop Connection",
+    connect: "Connect TikTok Shop",
+    refreshShops: "Refresh Shops",
+    syncProducts: "Sync Products",
+    configuredMissing: "Missing Key / Secret",
+    configuredMissingDetail: "Add TIKTOK_APP_KEY, TIKTOK_APP_SECRET, TIKTOK_SERVICE_ID, and TIKTOK_REDIRECT_URI in Render Environment Variables, then redeploy.",
+    notAuthorized: "Shop Not Authorized",
+    notAuthorizedDetail: "Configuration is ready. Connect TikTok Shop and authorize with your seller account.",
+    authorized: "Authorized",
+    shopsCount: (count) => `${count} shop${count === 1 ? "" : "s"}`,
+    noShopRead: "No shop loaded",
+    noSync: "Products not synced yet",
+    lastSync: (value) => `Last sync: ${value}`,
+    secretNote: "App Key, App Secret, and Redirect URL stay in Render Environment Variables. This page never displays secrets.",
+    authorizedShops: "Authorized Shops",
+    noShops: "No shops yet. Authorized shops will show market and shop code here.",
+    shopProducts: "Shop Products",
+    noProducts: "No products yet. Authorize a shop, then click Sync Products.",
+    stock: "Stock",
+    typeHair: "Hair Accessories",
+    typeEarrings: "Earrings",
+    typeNecklace: "Necklace",
+    typeBagCard: "Bag & Card",
+    typeOther: "Other",
+    opening: "Opening...",
+    refreshing: "Refreshing...",
+    syncing: "Syncing...",
+  },
+};
+
+function t(key, ...args) {
+  const value = i18n[currentLanguage]?.[key] ?? i18n.zh[key] ?? key;
+  return typeof value === "function" ? value(...args) : value;
+}
+
+function applyLanguage() {
+  if (el.languageSwitch) el.languageSwitch.value = currentLanguage;
+  document.documentElement.lang = currentLanguage === "zh" ? "zh-CN" : "en";
+  el.frontLink.textContent = t("front");
+  el.logoutButton.textContent = t("logout");
+  el.configPageTab.textContent = t("tabConfig");
+  el.rankingPageTab.textContent = t("tabRanking");
+  el.tiktokPageTab.textContent = t("tabTiktok");
+  el.supplierPageTab.textContent = t("tabSupplier");
+  el.tiktokPageTitle.textContent = t("tiktokTitle");
+  el.tiktokPageDesc.textContent = t("tiktokDesc");
+  el.tiktokConnectionEyebrow.textContent = t("openApi");
+  el.tiktokConnectionBadge.textContent = t("connectionBadge");
+  el.connectTikTokShop.textContent = t("connect");
+  el.refreshTikTokShops.textContent = t("refreshShops");
+  el.syncTikTokProducts.textContent = t("syncProducts");
+  el.tiktokSecretNote.textContent = t("secretNote");
+  el.typeFilter.querySelector('option[value="hair"]').textContent = t("typeHair");
+  el.typeFilter.querySelector('option[value="earrings"]').textContent = t("typeEarrings");
+  el.typeFilter.querySelector('option[value="necklace"]').textContent = t("typeNecklace");
+  el.typeFilter.querySelector('option[value="bag-card"]').textContent = t("typeBagCard");
+  el.typeFilter.querySelector('option[value="other"]').textContent = t("typeOther");
+  renderTikTokConnection(state.tiktok);
+  renderRows();
+}
 
 function fillForm() {
   const config = state.config || {};
@@ -165,15 +285,15 @@ function renderTikTokConnection(connection = state.tiktok) {
   const tiktok = connection || {};
   if (!el.tiktokConnectionStatus) return;
   if (!tiktok.configured) {
-    el.tiktokConnectionStatus.textContent = "缺少 Key / Secret";
-    el.tiktokConnectionDetail.textContent = "请在 Render Environment Variables 添加 TIKTOK_APP_KEY、TIKTOK_APP_SECRET、TIKTOK_SERVICE_ID、TIKTOK_REDIRECT_URI，然后重新部署。";
+    el.tiktokConnectionStatus.textContent = t("configuredMissing");
+    el.tiktokConnectionDetail.textContent = t("configuredMissingDetail");
   } else if (!tiktok.authorized) {
-    el.tiktokConnectionStatus.textContent = "未授权店铺";
-    el.tiktokConnectionDetail.textContent = tiktok.lastError || "配置已就绪，点击 Connect TikTok Shop 后用店铺账号授权。";
+    el.tiktokConnectionStatus.textContent = t("notAuthorized");
+    el.tiktokConnectionDetail.textContent = tiktok.lastError || t("notAuthorizedDetail");
   } else {
-    const shopText = tiktok.shops?.length ? `${tiktok.shops.length} 个店铺` : "未读取到店铺";
-    const syncText = tiktok.lastSyncAt ? `最近同步：${new Date(tiktok.lastSyncAt).toLocaleString()}` : "尚未同步商品";
-    el.tiktokConnectionStatus.textContent = "已授权";
+    const shopText = tiktok.shops?.length ? t("shopsCount", tiktok.shops.length) : t("noShopRead");
+    const syncText = tiktok.lastSyncAt ? t("lastSync", new Date(tiktok.lastSyncAt).toLocaleString()) : t("noSync");
+    el.tiktokConnectionStatus.textContent = t("authorized");
     el.tiktokConnectionDetail.textContent = `${shopText}；${syncText}。`;
   }
 
@@ -185,25 +305,25 @@ function renderTikTokConnection(connection = state.tiktok) {
 
 function renderTikTokShops(shops) {
   el.tiktokShopList.innerHTML = `
-    <h4>Authorized Shops</h4>
+    <h4>${t("authorizedShops")}</h4>
     ${shops.length ? shops.map((shop) => `
       <div class="mini-row">
         <strong>${escapeHtml(shop.name || shop.id || "TikTok Shop")}</strong>
         <span>${escapeHtml([shop.region, shop.seller_type, shop.code].filter(Boolean).join(" · ") || "-")}</span>
       </div>
-    `).join("") : `<p>暂无店铺。授权后会显示店铺市场和店铺编码。</p>`}
+    `).join("") : `<p>${t("noShops")}</p>`}
   `;
 }
 
 function renderTikTokProducts(products) {
   el.tiktokProductList.innerHTML = `
-    <h4>Shop Products</h4>
+    <h4>${t("shopProducts")}</h4>
     ${products.length ? products.slice(0, 8).map((product) => `
       <div class="mini-row">
         <strong>${escapeHtml(product.title || "Untitled product")}</strong>
-        <span>${escapeHtml([product.status, product.currency && product.price ? `${product.currency} ${product.price}` : "", product.inventory == null ? "" : `Stock ${product.inventory}`].filter(Boolean).join(" · ") || "-")}</span>
+        <span>${escapeHtml([product.status, product.currency && product.price ? `${product.currency} ${product.price}` : "", product.inventory == null ? "" : `${t("stock")} ${product.inventory}`].filter(Boolean).join(" · ") || "-")}</span>
       </div>
-    `).join("") : `<p>暂无商品。授权店铺后点 Sync Products。</p>`}
+    `).join("") : `<p>${t("noProducts")}</p>`}
   `;
 }
 
@@ -217,7 +337,7 @@ async function loadTikTokConnection() {
 
 async function connectTikTokShop() {
   el.connectTikTokShop.disabled = true;
-  el.connectTikTokShop.textContent = "Opening...";
+  el.connectTikTokShop.textContent = t("opening");
   try {
     const response = await fetch("/api/admin/tiktok/auth-url");
     const payload = await response.json();
@@ -225,13 +345,13 @@ async function connectTikTokShop() {
     window.location.href = payload.url;
   } finally {
     el.connectTikTokShop.disabled = false;
-    el.connectTikTokShop.textContent = "Connect TikTok Shop";
+    el.connectTikTokShop.textContent = t("connect");
   }
 }
 
 async function refreshTikTokShops() {
   el.refreshTikTokShops.disabled = true;
-  el.refreshTikTokShops.textContent = "Refreshing...";
+  el.refreshTikTokShops.textContent = t("refreshing");
   try {
     const response = await fetch("/api/admin/tiktok/shops", { method: "POST" });
     const payload = await response.json();
@@ -240,13 +360,13 @@ async function refreshTikTokShops() {
     renderTikTokConnection(payload);
   } finally {
     el.refreshTikTokShops.disabled = false;
-    el.refreshTikTokShops.textContent = "Refresh Shops";
+    el.refreshTikTokShops.textContent = t("refreshShops");
   }
 }
 
 async function syncTikTokProducts() {
   el.syncTikTokProducts.disabled = true;
-  el.syncTikTokProducts.textContent = "Syncing...";
+  el.syncTikTokProducts.textContent = t("syncing");
   try {
     const response = await fetch("/api/admin/tiktok/products", {
       method: "POST",
@@ -259,7 +379,7 @@ async function syncTikTokProducts() {
     renderTikTokConnection(payload);
   } finally {
     el.syncTikTokProducts.disabled = false;
-    el.syncTikTokProducts.textContent = "Sync Products";
+    el.syncTikTokProducts.textContent = t("syncProducts");
   }
 }
 
@@ -363,12 +483,12 @@ function classifyItem(item) {
 
 function typeLabel(type) {
   return {
-    hair: "Hair Accessories",
-    earrings: "Earrings",
-    necklace: "Necklace",
-    "bag-card": "Bag & Card",
-    other: "Other",
-  }[type] || "Other";
+    hair: t("typeHair"),
+    earrings: t("typeEarrings"),
+    necklace: t("typeNecklace"),
+    "bag-card": t("typeBagCard"),
+    other: t("typeOther"),
+  }[type] || t("typeOther");
 }
 
 function tasteSignals(item) {
@@ -1000,12 +1120,15 @@ function downloadCsv() {
 function setAdminPage(page) {
   const showConfig = page === "config";
   const showRanking = page === "ranking";
+  const showTiktok = page === "tiktok";
   const showSupplier = page === "supplier";
   el.configPage.classList.toggle("hidden", !showConfig);
   el.rankingPage.classList.toggle("hidden", !showRanking);
+  el.tiktokPage.classList.toggle("hidden", !showTiktok);
   el.supplierPage.classList.toggle("hidden", !showSupplier);
   el.configPageTab.classList.toggle("active", showConfig);
   el.rankingPageTab.classList.toggle("active", showRanking);
+  el.tiktokPageTab.classList.toggle("active", showTiktok);
   el.supplierPageTab.classList.toggle("active", showSupplier);
 }
 
@@ -1022,7 +1145,7 @@ function applyState(payload) {
   renderRows();
   updateAnalysisSummary();
   renderSourcingAdvice();
-  renderTikTokConnection(state.tiktok);
+  applyLanguage();
 }
 
 async function loadState() {
@@ -1266,7 +1389,15 @@ el.logoutButton.addEventListener("click", async () => {
 });
 el.configPageTab.addEventListener("click", () => setAdminPage("config"));
 el.rankingPageTab.addEventListener("click", () => setAdminPage("ranking"));
+el.tiktokPageTab.addEventListener("click", () => setAdminPage("tiktok"));
 el.supplierPageTab.addEventListener("click", () => setAdminPage("supplier"));
+el.languageSwitch.addEventListener("change", () => {
+  currentLanguage = el.languageSwitch.value;
+  localStorage.setItem("adminLanguage", currentLanguage);
+  applyLanguage();
+});
+
+applyLanguage();
 
 loadState().catch((error) => {
   el.saveStatus.textContent = "读取失败";
