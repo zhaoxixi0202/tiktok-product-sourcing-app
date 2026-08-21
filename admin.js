@@ -56,6 +56,7 @@ const el = {
   connectTikTokShop: document.querySelector("#connectTikTokShop"),
   refreshTikTokShops: document.querySelector("#refreshTikTokShops"),
   syncTikTokProducts: document.querySelector("#syncTikTokProducts"),
+  syncTikTokPromotions: document.querySelector("#syncTikTokPromotions"),
   resetTikTokAuth: document.querySelector("#resetTikTokAuth"),
   tiktokShopList: document.querySelector("#tiktokShopList"),
   tiktokProductList: document.querySelector("#tiktokProductList"),
@@ -106,6 +107,7 @@ const i18n = {
     connect: "连接 TikTok Shop",
     refreshShops: "刷新店铺",
     syncProducts: "同步商品",
+    syncPromotions: "同步促销",
     resetAuth: "重置授权",
     configuredMissing: "缺少 Key / Secret",
     configuredMissingDetail: "请在 Render Environment Variables 添加 TIKTOK_APP_KEY、TIKTOK_APP_SECRET、TIKTOK_SERVICE_ID、TIKTOK_REDIRECT_URI，然后重新部署。",
@@ -137,6 +139,12 @@ const i18n = {
     promoAddOn: "加购款",
     promoThreshold: "满减门槛",
     promoContent: "短视频话术",
+    promoExisting: (count) => `已读取 ${count} 个促销`,
+    promoNoExisting: "暂无已读取促销",
+    promoPlan: "本周执行方案",
+    promoHero: "主推商品",
+    promoMechanics: "活动机制",
+    promoOperations: "执行步骤",
     stock: "库存",
     typeHair: "头饰",
     typeEarrings: "耳饰",
@@ -146,6 +154,7 @@ const i18n = {
     opening: "打开中...",
     refreshing: "刷新中...",
     syncing: "同步中...",
+    syncingPromotions: "同步促销中...",
   },
   en: {
     front: "Back to Public List",
@@ -161,6 +170,7 @@ const i18n = {
     connect: "Connect TikTok Shop",
     refreshShops: "Refresh Shops",
     syncProducts: "Sync Products",
+    syncPromotions: "Sync Promotions",
     resetAuth: "Reset Auth",
     configuredMissing: "Missing Key / Secret",
     configuredMissingDetail: "Add TIKTOK_APP_KEY, TIKTOK_APP_SECRET, TIKTOK_SERVICE_ID, and TIKTOK_REDIRECT_URI in Render Environment Variables, then redeploy.",
@@ -192,6 +202,12 @@ const i18n = {
     promoAddOn: "Add-on",
     promoThreshold: "Spend Threshold",
     promoContent: "Video Angle",
+    promoExisting: (count) => `${count} promotion${count === 1 ? "" : "s"} loaded`,
+    promoNoExisting: "No promotion loaded",
+    promoPlan: "This Week's Plan",
+    promoHero: "Hero Product",
+    promoMechanics: "Promotion Mechanics",
+    promoOperations: "Execution Steps",
     stock: "Stock",
     typeHair: "Hair Accessories",
     typeEarrings: "Earrings",
@@ -201,6 +217,7 @@ const i18n = {
     opening: "Opening...",
     refreshing: "Refreshing...",
     syncing: "Syncing...",
+    syncingPromotions: "Syncing Promotions...",
   },
 };
 
@@ -226,6 +243,7 @@ function applyLanguage() {
   el.connectTikTokShop.textContent = t("connect");
   el.refreshTikTokShops.textContent = t("refreshShops");
   el.syncTikTokProducts.textContent = t("syncProducts");
+  el.syncTikTokPromotions.textContent = t("syncPromotions");
   el.resetTikTokAuth.textContent = t("resetAuth");
   el.tiktokSecretNote.textContent = t("secretNote");
   el.typeFilter.querySelector('option[value="hair"]').textContent = t("typeHair");
@@ -234,7 +252,7 @@ function applyLanguage() {
   el.typeFilter.querySelector('option[value="bag-card"]').textContent = t("typeBagCard");
   el.typeFilter.querySelector('option[value="other"]').textContent = t("typeOther");
   renderTikTokConnection(state.tiktok);
-  renderTikTokPromotionAdvice(state.tiktok?.products || []);
+  renderTikTokPromotionAdvice(state.tiktok?.products || [], state.tiktok?.promotions || []);
   renderRows();
 }
 
@@ -343,10 +361,11 @@ function renderTikTokConnection(connection = state.tiktok) {
 
   el.refreshTikTokShops.disabled = !tiktok.authorized;
   el.syncTikTokProducts.disabled = !tiktok.authorized;
+  el.syncTikTokPromotions.disabled = !tiktok.authorized;
   el.resetTikTokAuth.disabled = !tiktok.authorized && !tiktok.lastError;
   renderTikTokShops(tiktok.shops || []);
   renderTikTokProducts(tiktok.products || []);
-  renderTikTokPromotionAdvice(tiktok.products || []);
+  renderTikTokPromotionAdvice(tiktok.products || [], tiktok.promotions || []);
 }
 
 function renderTikTokShops(shops) {
@@ -468,7 +487,17 @@ function promoType(product) {
   return "other";
 }
 
-function renderTikTokPromotionAdvice(products) {
+function formatMoney(currency, value) {
+  const number = Number(value || 0);
+  if (!number) return "";
+  return `${currency || "SGD"} ${Number.isInteger(number) ? number : number.toFixed(2)}`;
+}
+
+function lineBreaks(value) {
+  return escapeHtml(value).replace(/\n/g, "<br>");
+}
+
+function renderTikTokPromotionAdvice(products, promotions = []) {
   if (!el.promoAdviceGrid) return;
   if (!products.length) {
     el.promoAdviceSignal.textContent = t("promoWaiting");
@@ -485,41 +514,47 @@ function renderTikTokPromotionAdvice(products) {
   const avgPrice = activeProducts.length ? activeProducts.reduce((sum, product) => sum + product.priceNumber, 0) / activeProducts.length : 0;
   const threshold = Math.ceil((avgPrice * 2.2) / 5) * 5;
   const types = [...new Set(activeProducts.map((product) => typeLabel(product.type)))].slice(0, 4);
+  const activePromotions = promotions.filter((promo) => /ACTIVE|ONGOING|APPROVED|START|ENABLE|LIVE/i.test(promo.status));
+  const promotionNote = promotions.length ? t("promoExisting", promotions.length) : t("promoNoExisting");
+  const heroPrice = formatMoney(hero.currency, hero.price);
+  const thresholdText = formatMoney(hero.currency, threshold || 25);
+  const discountText = formatMoney(hero.currency, (hero.currency || "SGD") === "SGD" ? 2 : Math.max(1, Math.round((threshold || 25) * 0.08)));
   el.promoAdviceSignal.textContent = activeProducts.length >= 2 ? t("promoReady") : t("promoWaiting");
   el.promoAdviceSummary.textContent = currentLanguage === "zh"
-    ? `基于 ${products.length} 个店铺商品，筛出 ${activeProducts.length} 个可组合款；建议优先做 ${types.join(" / ") || "配饰"} 的搭配包。`
-    : `Based on ${products.length} shop products, ${activeProducts.length} are bundle candidates. Prioritize ${types.join(" / ") || "accessory"} sets.`;
-  const bundleNames = [hero, ...addOns].filter(Boolean).map((product) => shortTitle(product.title)).join(" + ");
+    ? `基于 ${products.length} 个店铺商品，筛出 ${activeProducts.length} 个可组合款；${promotionNote}。建议先做“主推款 + 加购款 + 小额门槛券”。`
+    : `Based on ${products.length} shop products, ${activeProducts.length} are bundle candidates; ${promotionNote}. Start with a hero product, add-ons, and a small threshold coupon.`;
+  const addOnNames = addOns.map((product) => `${shortTitle(product.title)}（${formatMoney(product.currency, product.price) || "-"}）`).join(" / ");
+  const heroReasons = hero.analysis?.reasons?.slice(0, 2).join(" / ") || "";
   const cards = [
     {
-      title: t("promoBundle"),
+      title: t("promoPlan"),
       body: currentLanguage === "zh"
-        ? `${bundleNames || "先同步更多商品"}。适合做「一套出门配饰」或「通勤小配饰套装」。`
-        : `${bundleNames || "Sync more products first"}. Position as a ready-to-wear accessory set.`,
+        ? `目标：提高客单价，而不是单纯降价。\n打法：${shortTitle(hero.title)} 做主推，搭配 ${addOns.length ? addOnNames : "1-2 个低价高库存款"}。\n周期：先跑 3-5 天，看点击率、加购率和转化。`
+        : `Goal: lift average order value, not just discount.\nMove: use ${shortTitle(hero.title)} as the hero and pair it with ${addOns.length ? addOnNames : "1-2 low-price in-stock add-ons"}.\nRun it for 3-5 days, then check clicks, carts, and conversion.`,
     },
     {
-      title: t("promoAddOn"),
+      title: t("promoHero"),
       body: currentLanguage === "zh"
-        ? addOns.length ? addOns.map((item) => `${shortTitle(item.title)}（${item.currency || "SGD"} ${item.price}）`).join(" / ") : "加购款不足，先补 1-2 个低价高库存款。"
-        : addOns.length ? addOns.map((item) => `${shortTitle(item.title)} (${item.currency || "SGD"} ${item.price})`).join(" / ") : "Not enough add-ons. Add 1-2 low-price, in-stock items.",
+        ? `${shortTitle(hero.title)}｜${heroPrice || "价格待补"}｜库存 ${hero.inventory ?? "-"}。\n选择原因：${heroReasons || "当前评分最高，适合先做素材测试"}。`
+        : `${shortTitle(hero.title)} | ${heroPrice || "price missing"} | stock ${hero.inventory ?? "-"}.\nWhy: ${heroReasons || "Highest current score, good first creative test candidate"}.`,
     },
     {
-      title: t("promoThreshold"),
+      title: t("promoMechanics"),
       body: currentLanguage === "zh"
-        ? `建议测试满 ${hero.currency || "SGD"} ${threshold || 25} 免邮/减 ${hero.currency || "SGD"} 2-3，或第二件 8-9 折。`
-        : `Test free shipping or ${hero.currency || "SGD"} 2-3 off above ${hero.currency || "SGD"} ${threshold || 25}, or 10-20% off the second item.`,
+        ? `${activePromotions.length ? "已有活动，先检查是否和新券叠加，避免利润被吃掉。" : "目前没有读到活动，建议先在 Seller Center 建一个 Seller Voucher/Coupon。"}\n建议门槛：满 ${thresholdText || "SGD 25"} 减 ${discountText || "SGD 2"}，或第二件 9 折。\n注意：TikTok Open API 主要用于读取促销，创建优惠券通常仍在 Seller Center 操作。`
+        : `${activePromotions.length ? "Existing campaigns found. Check stacking before adding another discount." : "No active campaign loaded. Create a Seller Voucher/Coupon in Seller Center first."}\nSuggested threshold: ${discountText || "SGD 2"} off over ${thresholdText || "SGD 25"}, or 10% off the second item.\nNote: TikTok Open API is mainly useful here for reading promotions; coupon creation usually stays in Seller Center.`,
     },
     {
-      title: t("promoContent"),
+      title: t("promoOperations"),
       body: currentLanguage === "zh"
-        ? "短视频拍「上班前 30 秒搭配」「同一套衣服换 3 个配饰」「热天不塌发/不夸张通勤」。"
-        : "Shoot quick hooks: 30-second office styling, one outfit with three accessories, humid-weather fixes.",
+        ? `1. 先确认主推款库存和主图完整。\n2. 用加购款做套装图或直播口播：“买主推加 ${addOns[0] ? shortTitle(addOns[0].title) : "小配饰"} 更划算”。\n3. 短视频拍：上班前 30 秒搭配 / 一套衣服换 3 个配饰 / 热天轻便不夸张。\n4. 结束后保留转化好的款，低点击款换封面或标题。`
+        : `1. Confirm hero stock and main image.\n2. Use add-ons in bundle images or live scripts: buy the hero with ${addOns[0] ? shortTitle(addOns[0].title) : "a small accessory"} for better value.\n3. Video hooks: 30-second office styling / one outfit, three accessories / light humid-weather styling.\n4. Keep converters; refresh covers or titles for low-click products.`,
     },
   ];
   el.promoAdviceGrid.innerHTML = cards.map((card) => `
     <article class="advice-card">
       <h4>${escapeHtml(card.title)}</h4>
-      <p>${escapeHtml(card.body)}</p>
+      <p>${lineBreaks(card.body)}</p>
     </article>
   `).join("");
 }
@@ -577,6 +612,25 @@ async function syncTikTokProducts() {
   } finally {
     el.syncTikTokProducts.disabled = false;
     el.syncTikTokProducts.textContent = t("syncProducts");
+  }
+}
+
+async function syncTikTokPromotions() {
+  el.syncTikTokPromotions.disabled = true;
+  el.syncTikTokPromotions.textContent = t("syncingPromotions");
+  try {
+    const response = await fetch("/api/admin/tiktok/promotions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ limit: 50 }),
+    });
+    const payload = await response.json();
+    if (!response.ok || payload.error) throw new Error(payload.error || "促销同步失败");
+    state.tiktok = payload;
+    renderTikTokConnection(payload);
+  } finally {
+    el.syncTikTokPromotions.disabled = false;
+    el.syncTikTokPromotions.textContent = t("syncPromotions");
   }
 }
 
@@ -1596,6 +1650,14 @@ el.syncTikTokProducts.addEventListener("click", async () => {
     await syncTikTokProducts();
   } catch (error) {
     alert(`TikTok 商品同步失败：${error.message}`);
+    await loadTikTokConnection().catch(() => {});
+  }
+});
+el.syncTikTokPromotions.addEventListener("click", async () => {
+  try {
+    await syncTikTokPromotions();
+  } catch (error) {
+    alert(`TikTok 促销同步失败：${error.message}`);
     await loadTikTokConnection().catch(() => {});
   }
 });

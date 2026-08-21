@@ -44,7 +44,9 @@ const defaultState = {
     token: null,
     shops: [],
     products: [],
+    promotions: [],
     lastSyncAt: null,
+    lastPromotionSyncAt: null,
     lastError: null,
   },
 };
@@ -258,6 +260,7 @@ function publicTikTokConnection(tiktok) {
   const token = tiktok?.token || null;
   const shops = Array.isArray(tiktok?.shops) ? tiktok.shops : [];
   const products = Array.isArray(tiktok?.products) ? tiktok.products : [];
+  const promotions = Array.isArray(tiktok?.promotions) ? tiktok.promotions : [];
   return {
     configured: tiktokConfigured(),
     authorized: Boolean(token?.accessToken),
@@ -265,10 +268,12 @@ function publicTikTokConnection(tiktok) {
     refreshTokenExpiresAt: token?.refreshTokenExpiresAt || null,
     openId: token?.openId || "",
     scopes: token?.grantedScopes || [],
-    requiredScopes: ["seller.authorization.info", "seller.global_product.info", "seller.shop.info"],
+    requiredScopes: ["seller.authorization.info", "seller.global_product.info", "seller.shop.info", "seller.promotion.info"],
     shops,
     products,
+    promotions,
     lastSyncAt: tiktok?.lastSyncAt || null,
+    lastPromotionSyncAt: tiktok?.lastPromotionSyncAt || null,
     lastError: tiktok?.lastError || null,
   };
 }
@@ -851,6 +856,52 @@ async function syncTikTokProducts(limit = 50) {
   state.tiktok.products = products;
   state.tiktok.lastSyncAt = new Date().toISOString();
   state.tiktok.lastError = null;
+  writeState(state);
+  return publicTikTokConnection(state.tiktok);
+}
+
+function normalizeTikTokPromotion(item, type) {
+  const id = item.id || item.activity_id || item.coupon_id || item.promotion_id || "";
+  return {
+    id: String(id),
+    type,
+    title: String(item.title || item.name || item.activity_name || item.coupon_name || type),
+    status: String(item.status || item.activity_status || ""),
+    startTime: item.start_time || item.startTime || item.begin_time || "",
+    endTime: item.end_time || item.endTime || item.finish_time || "",
+    discountType: item.discount_type || item.discountType || item.activity_type || item.display_type || "",
+    raw: item,
+  };
+}
+
+async function syncTikTokPromotions(limit = 50) {
+  const state = readState();
+  const shops = state.tiktok?.shops?.length ? state.tiktok.shops : await fetchTikTokAuthorizedShops();
+  const shop = shops[0];
+  if (!shop?.cipher) throw new Error("No authorized TikTok Shop found. Please connect a shop first.");
+  const pageSize = Math.max(1, Math.min(100, Number(limit) || 50));
+  const [activityData, couponData] = await Promise.all([
+    callTikTokApi("/promotion/202309/activities/search", {
+      method: "POST",
+      query: { shop_cipher: shop.cipher, page_size: pageSize },
+      body: {},
+    }).catch((error) => ({ error: error.message, activities: [] })),
+    callTikTokApi("/promotion/202406/coupons/search", {
+      method: "POST",
+      query: { shop_cipher: shop.cipher, page_size: pageSize },
+      body: {},
+    }).catch((error) => ({ error: error.message, coupons: [] })),
+  ]);
+  const activities = activityData.activities || activityData.activity_list || activityData.items || [];
+  const coupons = couponData.coupons || couponData.coupon_list || couponData.items || [];
+  const promotions = [
+    ...activities.map((item) => normalizeTikTokPromotion(item, "activity")),
+    ...coupons.map((item) => normalizeTikTokPromotion(item, "coupon")),
+  ];
+  state.tiktok.shops = shops;
+  state.tiktok.promotions = promotions;
+  state.tiktok.lastPromotionSyncAt = new Date().toISOString();
+  state.tiktok.lastError = activityData.error || couponData.error || null;
   writeState(state);
   return publicTikTokConnection(state.tiktok);
 }
@@ -1593,6 +1644,18 @@ async function handleTikTokSyncProducts(req, res) {
   }
 }
 
+async function handleTikTokSyncPromotions(req, res) {
+  try {
+    const body = JSON.parse((await readBody(req)) || "{}");
+    sendJson(res, 200, await syncTikTokPromotions(body.limit || 50));
+  } catch (error) {
+    const state = readState();
+    state.tiktok.lastError = error.message;
+    writeState(state);
+    sendJson(res, 400, { error: error.message, connection: publicTikTokConnection(state.tiktok) });
+  }
+}
+
 function handleTikTokReset(res) {
   const state = readState();
   state.tiktok = {
@@ -1656,6 +1719,10 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === "POST" && url.pathname === "/api/admin/tiktok/products") {
     handleTikTokSyncProducts(req, res);
+    return;
+  }
+  if (req.method === "POST" && url.pathname === "/api/admin/tiktok/promotions") {
+    handleTikTokSyncPromotions(req, res);
     return;
   }
   if (req.method === "POST" && url.pathname === "/api/admin/tiktok/reset") {
