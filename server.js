@@ -1551,6 +1551,16 @@ async function handleTikTokSyncProducts(req, res) {
   }
 }
 
+function handleTikTokReset(res) {
+  const state = readState();
+  state.tiktok = {
+    ...defaultState.tiktok,
+    lastError: null,
+  };
+  writeState(state);
+  sendJson(res, 200, publicTikTokConnection(state.tiktok));
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   if (req.method === "POST" && url.pathname === "/api/login") {
@@ -1604,6 +1614,10 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === "POST" && url.pathname === "/api/admin/tiktok/products") {
     handleTikTokSyncProducts(req, res);
+    return;
+  }
+  if (req.method === "POST" && url.pathname === "/api/admin/tiktok/reset") {
+    handleTikTokReset(res);
     return;
   }
   if (req.method === "POST" && url.pathname === "/api/admin/reset-stats") {

@@ -56,6 +56,7 @@ const el = {
   connectTikTokShop: document.querySelector("#connectTikTokShop"),
   refreshTikTokShops: document.querySelector("#refreshTikTokShops"),
   syncTikTokProducts: document.querySelector("#syncTikTokProducts"),
+  resetTikTokAuth: document.querySelector("#resetTikTokAuth"),
   tiktokShopList: document.querySelector("#tiktokShopList"),
   tiktokProductList: document.querySelector("#tiktokProductList"),
   accountDetail: document.querySelector("#accountDetail"),
@@ -101,6 +102,7 @@ const i18n = {
     connect: "连接 TikTok Shop",
     refreshShops: "刷新店铺",
     syncProducts: "同步商品",
+    resetAuth: "重置授权",
     configuredMissing: "缺少 Key / Secret",
     configuredMissingDetail: "请在 Render Environment Variables 添加 TIKTOK_APP_KEY、TIKTOK_APP_SECRET、TIKTOK_SERVICE_ID、TIKTOK_REDIRECT_URI，然后重新部署。",
     notAuthorized: "未授权店铺",
@@ -146,6 +148,7 @@ const i18n = {
     connect: "Connect TikTok Shop",
     refreshShops: "Refresh Shops",
     syncProducts: "Sync Products",
+    resetAuth: "Reset Auth",
     configuredMissing: "Missing Key / Secret",
     configuredMissingDetail: "Add TIKTOK_APP_KEY, TIKTOK_APP_SECRET, TIKTOK_SERVICE_ID, and TIKTOK_REDIRECT_URI in Render Environment Variables, then redeploy.",
     notAuthorized: "Shop Not Authorized",
@@ -200,6 +203,7 @@ function applyLanguage() {
   el.connectTikTokShop.textContent = t("connect");
   el.refreshTikTokShops.textContent = t("refreshShops");
   el.syncTikTokProducts.textContent = t("syncProducts");
+  el.resetTikTokAuth.textContent = t("resetAuth");
   el.tiktokSecretNote.textContent = t("secretNote");
   el.typeFilter.querySelector('option[value="hair"]').textContent = t("typeHair");
   el.typeFilter.querySelector('option[value="earrings"]').textContent = t("typeEarrings");
@@ -313,6 +317,7 @@ function renderTikTokConnection(connection = state.tiktok) {
 
   el.refreshTikTokShops.disabled = !tiktok.authorized;
   el.syncTikTokProducts.disabled = !tiktok.authorized;
+  el.resetTikTokAuth.disabled = !tiktok.authorized && !tiktok.lastError;
   renderTikTokShops(tiktok.shops || []);
   renderTikTokProducts(tiktok.products || []);
 }
@@ -480,6 +485,25 @@ async function syncTikTokProducts() {
   } finally {
     el.syncTikTokProducts.disabled = false;
     el.syncTikTokProducts.textContent = t("syncProducts");
+  }
+}
+
+async function resetTikTokAuth() {
+  if (!window.confirm(currentLanguage === "zh"
+    ? "确认重置 TikTok 授权吗？这只会清除本工具保存的 token、店铺和商品缓存，不会影响 TikTok 店铺。"
+    : "Reset TikTok authorization? This only clears the token, shop, and product cache saved in this tool."
+  )) return;
+  el.resetTikTokAuth.disabled = true;
+  el.resetTikTokAuth.textContent = currentLanguage === "zh" ? "重置中..." : "Resetting...";
+  try {
+    const response = await fetch("/api/admin/tiktok/reset", { method: "POST" });
+    const payload = await response.json();
+    if (!response.ok || payload.error) throw new Error(payload.error || "TikTok reset failed");
+    state.tiktok = payload;
+    renderTikTokConnection(payload);
+  } finally {
+    el.resetTikTokAuth.disabled = false;
+    el.resetTikTokAuth.textContent = t("resetAuth");
   }
 }
 
@@ -1480,6 +1504,14 @@ el.syncTikTokProducts.addEventListener("click", async () => {
     await syncTikTokProducts();
   } catch (error) {
     alert(`TikTok 商品同步失败：${error.message}`);
+    await loadTikTokConnection().catch(() => {});
+  }
+});
+el.resetTikTokAuth.addEventListener("click", async () => {
+  try {
+    await resetTikTokAuth();
+  } catch (error) {
+    alert(`TikTok 授权重置失败：${error.message}`);
     await loadTikTokConnection().catch(() => {});
   }
 });
